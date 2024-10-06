@@ -1,6 +1,6 @@
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.Template.Views
-@model BTCPayServer.Plugins.Template.PluginPageViewModel
+@model Aqua.BTCPayPlugin.Controllers.PluginPageViewModel
 @{
     ViewData.SetActivePage(PluginNavPages.Index, "Plugin Template");
 }
@@ -18,8 +18,5 @@
     Every time you start BTCPay Server with this plugin enabled, a timestamp is logged.
 </p>
 <ul class="list-group">
-    @foreach (var item in Model.Data)
-    {
-        <li class="list-group-item">@item.Id at @item.Timestamp.ToString("F")</li>
-    }
+    @Model.Data
 </ul>

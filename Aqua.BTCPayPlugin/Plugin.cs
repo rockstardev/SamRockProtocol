@@ -1,5 +1,9 @@
 using Aqua.BTCPayPlugin.Services;
+using BTCPayServer.Abstractions.Contracts;
+using BTCPayServer.Abstractions.Models;
+using BTCPayServer.Abstractions.Services;
 using BTCPayServer.Plugins.Template;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Aqua.BTCPayPlugin;
 
@@ -14,13 +18,6 @@ public class Plugin : BaseBTCPayServerPlugin
     {
         services.AddSingleton<IUIExtension>(new UIExtension("TemplatePluginHeaderNav", "header-nav"));
         services.AddHostedService<ApplicationPartsLogger>();
-        services.AddHostedService<PluginMigrationRunner>();
         services.AddSingleton<MyPluginService>();
-        services.AddSingleton<MyPluginDbContextFactory>();
-        services.AddDbContext<MyPluginDbContext>((provider, o) =>
-        {
-            var factory = provider.GetRequiredService<MyPluginDbContextFactory>();
-            factory.ConfigureBuilder(o);
-        });
     }
 }

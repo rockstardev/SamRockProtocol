@@ -1,7 +1,9 @@
-using System.Collections.Generic;
-using System.Net;
 using System.Threading.Tasks;
 using Aqua.BTCPayPlugin.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using BTCPayServer.Client;
+using BTCPayServer.Abstractions.Constants;
 
 namespace Aqua.BTCPayPlugin.Controllers;
 
@@ -25,5 +27,5 @@ public class UIPluginController : Controller
 
 public class PluginPageViewModel
 {
-    public List<PluginData> Data { get; set; }
+    public string Data { get; set; }
 }
