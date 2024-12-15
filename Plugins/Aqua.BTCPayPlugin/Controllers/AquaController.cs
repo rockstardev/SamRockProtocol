@@ -1,5 +1,4 @@
 using System.Threading.Tasks;
-using Aqua.BTCPayPlugin.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using BTCPayServer.Client;
@@ -9,12 +8,12 @@ namespace Aqua.BTCPayPlugin.Controllers;
 
 [Route("~/plugins/{storeId}/aqua")]
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-public class AquaController(MyPluginService pluginService) : Controller
+public class AquaController() : Controller
 {
     // GET
     public async Task<IActionResult> ImportWallets()
     {
-        return View(new PluginPageViewModel { Data = await pluginService.Get() });
+        return View(new PluginPageViewModel { Data = "hello world" });
     }
 }
 

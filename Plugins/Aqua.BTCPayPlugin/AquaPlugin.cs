@@ -1,4 +1,4 @@
-using Aqua.BTCPayPlugin.Services;
+
 using BTCPayServer;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
@@ -17,8 +17,5 @@ public class AquaPlugin : BaseBTCPayServerPlugin
     public override void Execute(IServiceCollection services)
     {
         services.AddUIExtension("store-wallets-nav", "AquaSidebarNav");
-        
-        services.AddHostedService<ApplicationPartsLogger>();
-        services.AddSingleton<MyPluginService>();
     }
 }
