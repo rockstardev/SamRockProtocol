@@ -5,18 +5,9 @@
     ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "Import Wallets from Aqua");
 }
 <h1>@ViewData["Title"]</h1>
-<p>Here is an image loaded from the plugin</p>
+<p>Scan this QR code with Aqua wallet</p>
 <p>
-    <a href="https://twitter.com/NicolasDorier/status/1307221679014256640">
-        <img src="/Resources/img/screengrab.png"/>
+    <a href="https://x.com/r0ckstardev">
+        <img src="/Resources/img/qrcode.png"/>
     </a>
 </p>
-
-<h2>Persisted Data</h2>
-<p>
-    The following is data persisted to the configured database but in an isolated DbContext.
-    Every time you start BTCPay Server with this plugin enabled, a timestamp is logged.
-</p>
-<ul class="list-group">
-    @Model.Data
-</ul>

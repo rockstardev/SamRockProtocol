@@ -29,5 +29,6 @@
   
   <ItemGroup>
     <ProjectReference Include="..\..\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
+    <EmbeddedResource Include="Resources\**" />
   </ItemGroup>
 </Project>
