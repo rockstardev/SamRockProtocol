@@ -3,12 +3,11 @@ using BTCPayServer;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Abstractions.Services;
-using BTCPayServer.Plugins.Template;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Aqua.BTCPayPlugin;
 
-public class Plugin : BaseBTCPayServerPlugin
+public class AquaPlugin : BaseBTCPayServerPlugin
 {
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
@@ -17,7 +16,7 @@ public class Plugin : BaseBTCPayServerPlugin
 
     public override void Execute(IServiceCollection services)
     {
-        services.AddUIExtension("header-nav", "TemplatePluginHeaderNav");
+        services.AddUIExtension("store-wallets-nav", "AquaSidebarNav");
         
         services.AddHostedService<ApplicationPartsLogger>();
         services.AddSingleton<MyPluginService>();

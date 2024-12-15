@@ -1,6 +1,6 @@
-namespace BTCPayServer.Plugins.Template.Views;
+namespace Aqua.BTCPayPlugin.Views;
 
 public enum PluginNavPages
 {
-    Index
+    AquaImportWallets
 }
