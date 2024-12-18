@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BTCPayServer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using BTCPayServer.Client;
 using BTCPayServer.Abstractions.Constants;
+using BTCPayServer.Data;
 
 namespace Aqua.BTCPayPlugin.Controllers;
 
@@ -13,6 +15,8 @@ namespace Aqua.BTCPayPlugin.Controllers;
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class AquaController() : Controller
 {
+    private StoreData StoreData => HttpContext.GetStoreData();
+    
     [HttpGet("import-wallets")]
     public async Task<IActionResult> ImportWallets()
     {
@@ -30,12 +34,15 @@ public class AquaController() : Controller
         }
         
         var random21Charstring = new string(Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Take(21).ToArray());
+        model.StoreId = StoreData.Id;
         
         SamrockImportDictionary.Add(random21Charstring, model);
         
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+        var setupParams = $"{(model.BtcOnchain ? "btc-chain," : "")}{(model.LiquidOnchain ? "liquid-chain," : "")}{(model.BtcLightning ? "btc-ln," : "")}";
         var url = $"{baseUrl}/plugins/{model.StoreId}/aqua/samrockprotocol?setup=" +
-                  $"{(model.BtcOnchain ? "btc-chain," : "")}{(model.LiquidOnchain ? "liquid-chain," : "")}{(model.BtcLightning ? "btc-ln," : "")}&otp={random21Charstring}";
+                  $"{setupParams}"+
+                  $"&otp={random21Charstring}";
 
         model.QrCode = url;
         return View(model);
@@ -44,7 +51,7 @@ public class AquaController() : Controller
     public static Dictionary<string, ImportWalletsViewModel> SamrockImportDictionary = new();
 
     [HttpPost("samrockprotocol")]
-    public async Task<IActionResult> SamrockProtocol(ImportWalletsViewModel model)
+    public async Task<IActionResult> SamrockProtocol(string setup, string otp)
     {
         throw new NotImplementedException();
     }
