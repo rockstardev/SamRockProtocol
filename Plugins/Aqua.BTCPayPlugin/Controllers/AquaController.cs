@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Aqua.BTCPayPlugin.Services;
 using BTCPayServer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -13,7 +14,7 @@ namespace Aqua.BTCPayPlugin.Controllers;
 
 [Route("~/plugins/{storeId}/aqua")]
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-public class AquaController() : Controller
+public class AquaController(SamrockProtocolHostedService samrockProtocolHostedService) : Controller
 {
     private StoreData StoreData => HttpContext.GetStoreData();
     
@@ -35,8 +36,9 @@ public class AquaController() : Controller
         
         var random21Charstring = new string(Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Take(21).ToArray());
         model.StoreId = StoreData.Id;
+        model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
         
-        SamrockImportDictionary.Add(random21Charstring, model);
+        samrockProtocolHostedService.Add(random21Charstring, model);
         
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         var setupParams = $"{(model.BtcOnchain ? "btc-chain," : "")}{(model.LiquidOnchain ? "liquid-chain," : "")}{(model.BtcLightning ? "btc-ln," : "")}";
@@ -48,11 +50,17 @@ public class AquaController() : Controller
         return View(model);
     }
 
-    public static Dictionary<string, ImportWalletsViewModel> SamrockImportDictionary = new();
+    
 
     [HttpPost("samrockprotocol")]
-    public async Task<IActionResult> SamrockProtocol(string setup, string otp)
+    public async Task<IActionResult> SamrockProtocol(string otp, string setup)
     {
+        var importWalletModel = samrockProtocolHostedService.Get(StoreData.Id, otp);
+        if (importWalletModel == null)
+        {
+            return NotFound();
+        }
+        
         throw new NotImplementedException();
     }
 }
@@ -64,6 +72,7 @@ public class ImportWalletsViewModel
     public bool BtcLightning { get; set; }
     public bool LiquidOnchain { get; set; }
     public string QrCode { get; set; }
+    public DateTimeOffset Expires { get; set; }
 }
 
 public class SamrockProtocolModel
