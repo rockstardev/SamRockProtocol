@@ -34,19 +34,19 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
     private StoreData StoreData => HttpContext.GetStoreData();
     
     [HttpGet("import-wallets")]
-    public async Task<IActionResult> ImportWallets()
+    public Task<IActionResult> ImportWallets()
     {
-        return View(new ImportWalletsViewModel { BtcOnchain = true, BtcLightning = false, LiquidOnchain = false });
+        return Task.FromResult<IActionResult>(View(new ImportWalletsViewModel { BtcChain = true, BtcLn = false, LiquidChain = false }));
     }
     
     [HttpPost("import-wallets")]
-    public async Task<IActionResult> ImportWallets(ImportWalletsViewModel model)
+    public Task<IActionResult> ImportWallets(ImportWalletsViewModel model)
     {
         // TODO: Generate nonce that accepts derivations from Aqua wallet and applies them for this store
-        if (!model.BtcOnchain && !model.BtcLightning && !model.LiquidOnchain)
+        if (!model.BtcChain && !model.BtcLn && !model.LiquidChain)
         {
             ModelState.AddModelError("", "At least one wallet type must be selected");
-            return View(model);
+            return Task.FromResult<IActionResult>(View(model));
         }
         
         var random21Charstring = new string(Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Take(21).ToArray());
@@ -62,12 +62,12 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
                   $"&otp={random21Charstring}";
 
         model.QrCode = url;
-        return View(model);
+        return Task.FromResult<IActionResult>(View(model));
     }
     
     private string setupParamsFromModel(ImportWalletsViewModel model)
     {
-        return $"{(model.BtcOnchain ? "btc-chain," : "")}{(model.LiquidOnchain ? "liquid-chain," : "")}{(model.BtcLightning ? "btc-ln," : "")}";
+        return $"{(model.BtcChain ? "btc-chain," : "")}{(model.LiquidChain ? "liquid-chain," : "")}{(model.BtcLn ? "btc-ln," : "")}";
     }
 
     
@@ -82,7 +82,7 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
         }
         
         // only setup onchain for now as proof of concept
-        if (importWalletModel.BtcOnchain)
+        if (importWalletModel.BtcChain)
         {
             var network = explorerProvider.GetNetwork("BTC");
 
@@ -137,9 +137,9 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
 public class ImportWalletsViewModel
 {
     public string StoreId { get; set; }
-    public bool BtcOnchain { get; set; }
-    public bool BtcLightning { get; set; }
-    public bool LiquidOnchain { get; set; }
+    public bool BtcChain { get; set; }
+    public bool BtcLn { get; set; }
+    public bool LiquidChain { get; set; }
     public string QrCode { get; set; }
     public DateTimeOffset Expires { get; set; }
 }

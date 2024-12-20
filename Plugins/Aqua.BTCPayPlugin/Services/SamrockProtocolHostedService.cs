@@ -30,9 +30,11 @@ public class SamrockProtocolHostedService (
     {
         if (evt is CheckForExpiryEvent)
         {
-            _samrockImportDictionary.Where(a => a.Value.Expires <= DateTimeOffset.UtcNow)
-                .ToList()
-                .ForEach(a => _samrockImportDictionary.Remove(a.Key));
+            var list = _samrockImportDictionary
+                .Where(a => a.Value.Expires <= DateTimeOffset.UtcNow)
+                .ToList();
+                
+            list.ForEach(a => _samrockImportDictionary.Remove(a.Key));
         }
     }
 
