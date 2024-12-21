@@ -5,9 +5,39 @@
     ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "Import Wallets from Aqua");
 }
 <h1>@ViewData["Title"]</h1>
-<p>Scan this QR code with Aqua wallet</p>
-<p>
-    <a href="https://x.com/r0ckstardev">
-        <img src="/Resources/img/qrcode.png"/>
-    </a>
-</p>
+
+@if (Model.QrCode == null)
+{
+    <form id="walletSettingsForm" method="post">
+        <div class="form-group my-4">
+            <div class="d-flex align-items-center">
+                <input asp-for="BtcChain" type="checkbox" class="btcpay-toggle me-3"/>
+                <label asp-for="BtcChain" class="form-check-label"></label>
+            </div>
+            <span asp-validation-for="BtcChain" class="text-danger"></span>
+        </div>
+        <div class="form-group my-4">
+            <div class="d-flex align-items-center">
+                <input asp-for="BtcLn" type="checkbox" class="btcpay-toggle me-3"/>
+                <label asp-for="BtcLn" class="form-check-label"></label>
+            </div>
+            <span asp-validation-for="BtcLn" class="text-danger"></span>
+        </div>
+        <div class="form-group my-4">
+            <div class="d-flex align-items-center">
+                <input asp-for="LiquidChain" type="checkbox" class="btcpay-toggle me-3"/>
+                <label asp-for="LiquidChain" class="form-check-label"></label>
+            </div>
+            <span asp-validation-for="LiquidChain" class="text-danger"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary" text-translate="true">Submit</button>
+    </form>
+}
+else
+{
+    <p>Scan this QR code with Aqua wallet</p>
+    <p>
+        <vc:qr-code data="bitcoin:@(Model.QrCode)" />
+    </p>
+}

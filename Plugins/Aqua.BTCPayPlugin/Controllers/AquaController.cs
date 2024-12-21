@@ -34,26 +34,24 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
     private StoreData StoreData => HttpContext.GetStoreData();
     
     [HttpGet("import-wallets")]
-    public Task<IActionResult> ImportWallets()
+    public async Task<IActionResult> ImportWallets()
     {
-        return Task.FromResult<IActionResult>(View(new ImportWalletsViewModel { BtcChain = true, BtcLn = false, LiquidChain = false }));
+        return View(new ImportWalletsViewModel { BtcChain = true, BtcLn = false, LiquidChain = false });
     }
     
     [HttpPost("import-wallets")]
-    public Task<IActionResult> ImportWallets(ImportWalletsViewModel model)
+    public async Task<IActionResult> ImportWallets(ImportWalletsViewModel model)
     {
         // TODO: Generate nonce that accepts derivations from Aqua wallet and applies them for this store
         if (!model.BtcChain && !model.BtcLn && !model.LiquidChain)
         {
             ModelState.AddModelError("", "At least one wallet type must be selected");
-            return Task.FromResult<IActionResult>(View(model));
+            return View(model);
         }
         
         var random21Charstring = new string(Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Take(21).ToArray());
         model.StoreId = StoreData.Id;
         model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
-        
-        samrockProtocolHostedService.Add(random21Charstring, model);
         
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         var setupParams = setupParamsFromModel(model);
@@ -62,7 +60,9 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
                   $"&otp={random21Charstring}";
 
         model.QrCode = url;
-        return Task.FromResult<IActionResult>(View(model));
+        
+        samrockProtocolHostedService.Add(random21Charstring, model);
+        return View(model);
     }
     
     private string setupParamsFromModel(ImportWalletsViewModel model)
