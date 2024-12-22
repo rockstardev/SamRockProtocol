@@ -16,6 +16,18 @@ public class AquaPlugin : BaseBTCPayServerPlugin
         new() {Identifier = nameof(BTCPayServer), Condition = ">=2.0.0"}
     ];
 
+    public static bool IsDevMode
+    {
+        get
+        {
+#if DEBUG
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
+
     public override void Execute(IServiceCollection services)
     {
         services.AddUIExtension("store-wallets-nav", "AquaSidebarNav");
