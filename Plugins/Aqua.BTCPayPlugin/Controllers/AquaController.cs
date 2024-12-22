@@ -56,8 +56,8 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         var setupParams = setupParamsFromModel(model);
         var url = $"{baseUrl}/plugins/{model.StoreId}/aqua/samrockprotocol?setup=" +
-                  $"{setupParams}"+
-                  $"&otp={random21Charstring}";
+                  $"{Uri.EscapeDataString(setupParams)}" +
+                  $"&otp={Uri.EscapeDataString(random21Charstring)}";
 
         model.QrCode = url;
         
@@ -73,8 +73,12 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
     
 
     [HttpPost("samrockprotocol")]
-    public async Task<IActionResult> SamrockProtocol(string otp, [FromBody]SamrockProtocolModel json)
+    public async Task<IActionResult> SamrockProtocol(string otp)
     {
+        var jsonField = Request.Form["json"];
+
+        var json = Newtonsoft.Json.JsonConvert.DeserializeObject<SamrockProtocolModel>(jsonField);
+        
         var importWalletModel = samrockProtocolHostedService.Get(StoreData.Id, otp);
         if (importWalletModel == null)
         {
