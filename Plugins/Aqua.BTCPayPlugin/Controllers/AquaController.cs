@@ -24,7 +24,8 @@ namespace Aqua.BTCPayPlugin.Controllers;
 
 [Route("~/plugins/{storeId}/aqua")]
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-public class AquaController(SamrockProtocolHostedService samrockProtocolHostedService,
+public class AquaController(
+    SamrockProtocolHostedService samrockProtocolHostedService,
     PaymentMethodHandlerDictionary handlers,
     ExplorerClientProvider explorerProvider,
     BTCPayWalletProvider walletProvider,
@@ -32,13 +33,13 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
     EventAggregator eventAggregator) : Controller
 {
     private StoreData StoreData => HttpContext.GetStoreData();
-    
+
     [HttpGet("import-wallets")]
     public async Task<IActionResult> ImportWallets()
     {
         return View(new ImportWalletsViewModel { BtcChain = true, BtcLn = false, LiquidChain = false });
     }
-    
+
     [HttpPost("import-wallets")]
     public async Task<IActionResult> ImportWallets(ImportWalletsViewModel model)
     {
@@ -48,29 +49,25 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
             ModelState.AddModelError("", "At least one wallet type must be selected");
             return View(model);
         }
-        
+
         var random21Charstring = new string(Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Take(21).ToArray());
         model.StoreId = StoreData.Id;
         model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
-        
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         var setupParams = setupParamsFromModel(model);
         var url = $"{baseUrl}/plugins/{model.StoreId}/aqua/samrockprotocol?setup=" +
-                  $"{Uri.EscapeDataString(setupParams)}" +
+                  $"{Uri.EscapeDataString(setupParams)}" + 
                   $"&otp={Uri.EscapeDataString(random21Charstring)}";
-
         model.QrCode = url;
-        
         samrockProtocolHostedService.Add(random21Charstring, model);
         return View(model);
     }
-    
+
     private string setupParamsFromModel(ImportWalletsViewModel model)
     {
-        return $"{(model.BtcChain ? "btc-chain," : "")}{(model.LiquidChain ? "liquid-chain," : "")}{(model.BtcLn ? "btc-ln," : "")}";
+        return
+            $"{(model.BtcChain ? "btc-chain," : "")}{(model.LiquidChain ? "liquid-chain," : "")}{(model.BtcLn ? "btc-ln," : "")}";
     }
-
-    
 
     [HttpPost("samrockprotocol")]
     public async Task<IActionResult> SamrockProtocol(string otp)
