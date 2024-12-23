@@ -76,43 +76,56 @@ public class AquaController(SamrockProtocolHostedService samrockProtocolHostedSe
     public async Task<IActionResult> SamrockProtocol(string otp)
     {
         var jsonField = Request.Form["json"];
+        SamrockProtocolModel json;
+        try
+        {
+            json = Newtonsoft.Json.JsonConvert.DeserializeObject<SamrockProtocolModel>(jsonField);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = "Invalid JSON format.", details = ex.Message });
+        }
 
-        var json = Newtonsoft.Json.JsonConvert.DeserializeObject<SamrockProtocolModel>(jsonField);
-        
         var importWalletModel = samrockProtocolHostedService.Get(StoreData.Id, otp);
         if (importWalletModel == null)
         {
-            return NotFound();
+            return NotFound(new { error = "OTP not found or expired." });
         }
-        
+
         // only setup onchain for now as proof of concept
         if (importWalletModel.BtcChain)
         {
-            var network = explorerProvider.GetNetwork("BTC");
-
-            DerivationSchemeSettings strategy = null;
-            PaymentMethodId paymentMethodId = PaymentTypes.CHAIN.GetPaymentMethodId(network.CryptoCode);
-
-            strategy = ParseDerivationStrategy(json.BtcChain, network);
-            strategy.Source = "ManualDerivationScheme";
-
-            var wallet = walletProvider.GetWallet(network);
-            await wallet.TrackAsync(strategy.AccountDerivation);
-            StoreData.SetPaymentMethodConfig(handlers[paymentMethodId], strategy);
-            var storeBlob = StoreData.GetStoreBlob();
-            storeBlob.SetExcluded(paymentMethodId, false);
-            storeBlob.PayJoinEnabled = false;
-            StoreData.SetStoreBlob(storeBlob);
-
-            await storeRepo.UpdateStore(StoreData);
-            eventAggregator.Publish(
-                new WalletChangedEvent { WalletId = new WalletId(StoreData.Id, network.CryptoCode) });
+            try
+            {
+                var network = explorerProvider.GetNetwork("BTC");
+                DerivationSchemeSettings strategy = null;
+                PaymentMethodId paymentMethodId = PaymentTypes.CHAIN.GetPaymentMethodId(network.CryptoCode);
+                strategy = ParseDerivationStrategy(json.BtcChain, network);
+                strategy.Source = "ManualDerivationScheme";
+                var wallet = walletProvider.GetWallet(network);
+                await wallet.TrackAsync(strategy.AccountDerivation);
+                StoreData.SetPaymentMethodConfig(handlers[paymentMethodId], strategy);
+                var storeBlob = StoreData.GetStoreBlob();
+                storeBlob.SetExcluded(paymentMethodId, false);
+                storeBlob.PayJoinEnabled = false;
+                StoreData.SetStoreBlob(storeBlob);
+                await storeRepo.UpdateStore(StoreData);
+                eventAggregator.Publish(new WalletChangedEvent
+                {
+                    WalletId = new WalletId(StoreData.Id, network.CryptoCode)
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500,
+                    new { error = "An error occurred while setting up OnChain wallet.", details = ex.Message });
+            }
         }
 
-        return Ok();
+        samrockProtocolHostedService.Remove(StoreData.Id, otp);
+        return Ok(new { message = "Wallet setup successfully." });
     }
-    
-    
+
     // TODO: Copied from BTCPayServer/Controllers/UIStoresController.cs, integrate together
     private DerivationSchemeSettings ParseDerivationStrategy(string derivationScheme, BTCPayNetwork network)
     {

@@ -53,4 +53,13 @@ public class SamrockProtocolHostedService (
 
         return import;
     }
+
+    public void Remove(string storeId, string otp)
+    {
+        var import = _samrockImportDictionary[otp];
+        if (import.StoreId == storeId)
+        {
+            _samrockImportDictionary.Remove(otp);
+        }
+    }
 }
