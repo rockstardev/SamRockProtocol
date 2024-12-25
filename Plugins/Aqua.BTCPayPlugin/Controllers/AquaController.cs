@@ -43,7 +43,6 @@ public class AquaController(
     [HttpPost("import-wallets")]
     public async Task<IActionResult> ImportWallets(ImportWalletsViewModel model)
     {
-        // TODO: Generate nonce that accepts derivations from Aqua wallet and applies them for this store
         if (!model.BtcChain && !model.BtcLn && !model.LiquidChain)
         {
             ModelState.AddModelError("", "At least one wallet type must be selected");
