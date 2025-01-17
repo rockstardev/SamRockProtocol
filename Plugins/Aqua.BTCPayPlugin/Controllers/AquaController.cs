@@ -117,6 +117,18 @@ public class AquaController(
                     new { error = "An error occurred while setting up OnChain wallet.", details = ex.Message });
             }
         }
+        else if (importWalletModel.LiquidChain)
+        {
+            /*
+            xpub...  //confidential but using the proprietary blinding derivation (deterministic based on the xpub and index 
+            of address derived, because realistically if server data is leaked, the blinding  key is too, but anyway)
+            xpub...-[unblinded] //unconfidential addresses
+            xppub-[slip77=master key] //spec variant, master key can be any of the following format:
+            * private key in WIF format
+            * private key in hex
+            * mnemonic phrase that we derive a slip77 master key from
+             */
+        }
 
         samrockProtocolHostedService.Remove(StoreData.Id, otp);
         return Ok(new { message = "Wallet setup successfully." });
