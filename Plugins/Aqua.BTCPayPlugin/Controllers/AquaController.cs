@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -12,13 +12,9 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
 using BTCPayServer.Payments;
-using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using BTCPayServer.Services.Wallets;
-using NBitcoin;
-using NBitcoin.DataEncoders;
-using Newtonsoft.Json.Linq;
 
 namespace Aqua.BTCPayPlugin.Controllers;
 
@@ -162,8 +158,11 @@ public class AquaController(
 public class ImportWalletsViewModel
 {
     public string StoreId { get; set; }
+    [DisplayName("Bitcoin")]
     public bool BtcChain { get; set; }
+    [DisplayName("Lightning")]
     public bool BtcLn { get; set; }
+    [DisplayName("Liquid Bitcoin")]
     public bool LiquidChain { get; set; }
     public string QrCode { get; set; }
     public DateTimeOffset Expires { get; set; }
