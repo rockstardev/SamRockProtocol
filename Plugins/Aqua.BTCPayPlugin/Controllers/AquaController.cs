@@ -33,7 +33,14 @@ public class AquaController(
     [HttpGet("import-wallets")]
     public async Task<IActionResult> ImportWallets()
     {
-        return View(new ImportWalletsViewModel { BtcChain = true, BtcLn = false, LiquidChain = false });
+        var model = new ImportWalletsViewModel
+        {
+            BtcChain = true,
+            BtcLn = false,
+            LiquidChain = false,
+            LiquidSupportedOnServer = explorerProvider.GetNetwork("LBTC") != null
+        };
+        return View(model);
     }
 
     [HttpPost("import-wallets")]
@@ -166,6 +173,7 @@ public class ImportWalletsViewModel
     public bool LiquidChain { get; set; }
     public string QrCode { get; set; }
     public DateTimeOffset Expires { get; set; }
+    public bool LiquidSupportedOnServer { get; set; }
 }
 
 public class SamrockProtocolModel

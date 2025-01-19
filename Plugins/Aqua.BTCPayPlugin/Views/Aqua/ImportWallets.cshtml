@@ -17,16 +17,23 @@
             </div>
             <span asp-validation-for="BtcChain" class="text-danger"></span>
         </div>
+        @Html.HiddenFor(a=>a.LiquidSupportedOnServer)
+        @if (!Model.LiquidSupportedOnServer)
+        {
+            <div class="form-group my-4">
+                <label class="form-check-label text-danger">Liquid not supported on the server</label>
+            </div>
+        }
         <div class="form-group my-4">
             <div class="d-flex align-items-center">
-                <input asp-for="BtcLn" type="checkbox" class="btcpay-toggle me-3"/>
+                <input asp-for="BtcLn" type="checkbox" class="btcpay-toggle me-3" disabled="@(!Model.LiquidSupportedOnServer)" />
                 <label asp-for="BtcLn" class="form-check-label"></label>
             </div>
             <span asp-validation-for="BtcLn" class="text-danger"></span>
         </div>
         <div class="form-group my-4">
             <div class="d-flex align-items-center">
-                <input asp-for="LiquidChain" type="checkbox" class="btcpay-toggle me-3"/>
+                <input asp-for="LiquidChain" type="checkbox" class="btcpay-toggle me-3" disabled="@(!Model.LiquidSupportedOnServer)" />
                 <label asp-for="LiquidChain" class="form-check-label"></label>
             </div>
             <span asp-validation-for="LiquidChain" class="text-danger"></span>
