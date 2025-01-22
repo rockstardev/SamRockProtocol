@@ -43,15 +43,17 @@ public class SamrockProtocolHostedService (
         _samrockImportDictionary.Add(random21Charstring, model);
     }
 
-    public ImportWalletsViewModel Get(string storeId, string otp)
+    public bool TryGet(string storeId, string otp, out ImportWalletsViewModel model)
     {
         var import = _samrockImportDictionary[otp];
         if (import.StoreId != storeId)
         {
-            return null;
+            model = null;
+            return false;
         }
 
-        return import;
+        model = import;
+        return true;
     }
 
     public void Remove(string storeId, string otp)
