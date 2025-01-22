@@ -46,7 +46,7 @@ else
 {
     <p>Scan this QR code with Aqua wallet</p>
     <p>
-        <vc:qr-code data="bitcoin:@(Model.QrCode)" />
+        <vc:qr-code data="@(Model.QrCode)" />
     </p>
     @if (AquaPlugin.IsDevMode)
     {
