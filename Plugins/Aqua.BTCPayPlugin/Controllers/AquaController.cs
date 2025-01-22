@@ -124,6 +124,7 @@ public class AquaController(
         if (importWalletModel.LiquidChain)
         {
             if (explorerProvider.GetNetwork("LBTC") != null)
+            {
                 try
                 {
                     var network = explorerProvider.GetNetwork("LBTC");
@@ -149,12 +150,15 @@ public class AquaController(
                     return StatusCode(500,
                         new { error = "An error occurred while setting up Liquid wallet.", details = ex.Message });
                 }
+            }
             else
+            {
                 result.Results.Add(SamrockProtocolKeys.LiquidChain,
                     new SamrockProtocolResultModel.Item
                     {
                         Success = false, Error = "Liquid is not supported on this server."
                     });
+            }
             /*
             xpub...  //confidential but using the proprietary blinding derivation (deterministic based on the xpub and index
             of address derived, because realistically if server data is leaked, the blinding  key is too, but anyway)
@@ -219,7 +223,7 @@ public class SamrockProtocolSetupModel
 
 public class SamrockProtocolResultModel
 {
-    public Dictionary<SamrockProtocolKeys, Item> Results { get; set; }
+    public Dictionary<SamrockProtocolKeys, Item> Results { get; init; } = new();
 
     public class Item
     {
