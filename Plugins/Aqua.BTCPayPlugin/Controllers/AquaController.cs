@@ -102,6 +102,7 @@ public class AquaController : Controller
             "BTC", SamrockProtocolKeys.BtcChain, result);
         await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath,
             "LBTC", SamrockProtocolKeys.LiquidChain, result);
+        // TODO: Add support for lightning
 
         _samrockProtocolService.Remove(CurrentStore.Id, otp);
         return Ok(new { message = "Wallet setup successfully.", result });
