@@ -20,11 +20,12 @@ public class AquaPlugin : BaseBTCPayServerPlugin
     {
         get
         {
-#if DEBUG
+// #if DEBUG
+//             return true;
+// #else
+//             return false;
+// #endif
             return true;
-#else
-            return false;
-#endif
         }
     }
 
