@@ -16,6 +16,8 @@ using BTCPayServer.Services.Stores;
 using BTCPayServer.Services.Wallets;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using NBitcoin;
 using Newtonsoft.Json;
 
 namespace Aqua.BTCPayPlugin.Controllers;
@@ -96,14 +98,16 @@ public class AquaController : Controller
 
         var result = new SamrockProtocolResultModel();
 
-        await SetupWalletAsync(setupModel.BtcChain, "BTC", SamrockProtocolKeys.BtcChain, result);
-        await SetupWalletAsync(setupModel.LiquidChain, "LBTC", SamrockProtocolKeys.LiquidChain, result);
+        await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.DerivationPath,
+            "BTC", SamrockProtocolKeys.BtcChain, result);
+        await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath,
+            "LBTC", SamrockProtocolKeys.LiquidChain, result);
 
         _samrockProtocolService.Remove(CurrentStore.Id, otp);
         return Ok(new { message = "Wallet setup successfully.", result });
     }
 
-    private async Task SetupWalletAsync(string derivationScheme, string networkCode, SamrockProtocolKeys key, SamrockProtocolResultModel result)
+    private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode, SamrockProtocolKeys key, SamrockProtocolResultModel result)
     {
         if (string.IsNullOrEmpty(derivationScheme) || _explorerProvider.GetNetwork(networkCode) == null)
         {
@@ -115,6 +119,7 @@ public class AquaController : Controller
         {
             var network = _explorerProvider.GetNetwork(networkCode);
             var strategy = ParseDerivationStrategy(derivationScheme, network);
+            strategy.AccountKeySettings[0].AccountKeyPath = new KeyPath(derivationPath);
 
             var wallet = _walletProvider.GetWallet(network);
             await wallet.TrackAsync(strategy.AccountDerivation);
@@ -213,9 +218,61 @@ public class ImportWalletsViewModel
 
 public class SamrockProtocolSetupModel
 {
-    public string BtcChain { get; set; }
-    public string BtcLn { get; set; }
-    public string LiquidChain { get; set; }
+    public BtcChainSetupModel BtcChain { get; set; }
+    public BtcLnSetupModel BtcLn { get; set; }
+    public LiquidChainSetupModel LiquidChain { get; set; }
+
+    public static string TypeToString(AddressTypes type)
+    {
+        switch (type)
+        {
+            case AddressTypes.P2TR:
+                return "-[taproot]";
+            case AddressTypes.P2WPKH:
+                return "";
+            case AddressTypes.P2SH_P2WPKH:
+                return "-[p2sh]";
+            case AddressTypes.P2PKH:
+                return "-[legacy]";
+            default:
+                throw new InvalidOperationException();
+        }
+    }
+}
+
+public class BtcChainSetupModel
+{
+    public string Xpub { get; set; }
+    public string DerivationPath { get; set; }
+    public AddressTypes Type { get; set; }
+
+    public override string ToString()
+    {
+        return $"{Xpub}{SamrockProtocolSetupModel.TypeToString(Type)}";
+    }
+}
+
+public class LiquidChainSetupModel
+{
+    public string Xpub { get; set; }
+    public string DerivationPath { get; set; }
+    public AddressTypes Type { get; set; }
+    public string BlindingKey { get; set; }
+
+    public override string ToString()
+    {
+        return $"{Xpub}{SamrockProtocolSetupModel.TypeToString(Type)}-[slip77={BlindingKey}]";
+    }
+}
+
+public class BtcLnSetupModel
+{
+    public bool UseLiquidBoltz { get; set; }
+}
+
+public enum AddressTypes
+{
+    P2PKH, P2SH_P2WPKH, P2WPKH, P2TR
 }
 
 public class SamrockProtocolResultModel
