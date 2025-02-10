@@ -52,7 +52,7 @@ else
     {
         <p>
             <form action="@Model.QrCode" method="post">
-                <textarea name="json" rows="5" cols="100">
+                <textarea name="json" rows="8" cols="100">
 {
   "BtcChain": {
     "Xpub": "tpubDDPCDkBPaFE5PDhs5NJDb38RKzDuuRcMhcGgGHSdVFFPiX13R1BZCBm3xS48zJRkoqqZEEixpjViweQqSAfDRXHZV6gEeWoGDUnEqQZ42Gg",
@@ -66,7 +66,8 @@ else
     "Type": "P2SH_P2WPKH"
   },
   "BtcLn": {
-    "UseLiquidBoltz: true
+    "UseLiquidBoltz: "true"
+  }
 }
                 </textarea>
                 <button type="submit" class="btn btn-primary" text-translate="true">Test Setup</button>
