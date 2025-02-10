@@ -8,7 +8,7 @@
   <PropertyGroup>
     <Product>zzz - Aqua SamRock</Product>
     <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** Plugin for BTCPay Server implementing SamRock protocol to import wallet derivation keys and receive payments directly in Aqua from BTCPay Server store</Description>
-    <Version>1.0.4</Version>
+    <Version>1.0.5</Version>
   </PropertyGroup>
 
   <!-- Plugin development properties -->
