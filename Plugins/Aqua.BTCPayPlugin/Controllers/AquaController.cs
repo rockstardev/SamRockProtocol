@@ -49,7 +49,7 @@ public class AquaController : Controller
         _eventAggregator = eventAggregator;
     }
 
-    private StoreData CurrentStore => HttpContext.GetStoreData();
+    [FromRoute] public string StoreId { get; set; }
 
     [HttpGet("import-wallets")]
     public IActionResult ImportWallets()
@@ -74,7 +74,7 @@ public class AquaController : Controller
         }
 
         var otp = OtpGenerator.Generate();
-        model.StoreId = CurrentStore.Id;
+        model.StoreId = StoreId;
         model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
         model.QrCode = GenerateSetupUrl(model, otp);
 
@@ -87,11 +87,17 @@ public class AquaController : Controller
     [HttpPost("samrockprotocol")]
     public async Task<IActionResult> SamrockProtocol(string otp)
     {
-        if (!_samrockProtocolService.TryGet(CurrentStore.Id, otp, out var importWalletModel))
+        if (!_samrockProtocolService.TryGet(otp, out var importWalletModel))
         {
             return NotFound(new SamrockProtocolResponse(false, "OTP not found or expired.", null));
         }
-
+        
+        var storeData = await _storeRepository.FindStore(importWalletModel.StoreId);
+        if (storeData == null)
+        {
+            return NotFound(new SamrockProtocolResponse(false, "Store not found.", null));
+        }
+        
         var jsonField = Request.Form["json"];
         var setupModel = TryDeserializeJson(jsonField, out Exception ex);
         if (setupModel == null)
@@ -103,22 +109,22 @@ public class AquaController : Controller
 
         if (setupModel.BtcChain != null)
         {
-            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.DerivationPath,
-                "BTC", SamrockProtocolKeys.BtcChain, result);
+            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.DerivationPath, "BTC", 
+                storeData, SamrockProtocolKeys.BtcChain, result);
         }
         if (setupModel.LiquidChain != null)
         {
-            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath,
-                "LBTC", SamrockProtocolKeys.LiquidChain, result);
+            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath, "LBTC", 
+                storeData, SamrockProtocolKeys.LiquidChain, result);
         }
         // TODO: Add support for lightning
 
-        _samrockProtocolService.Remove(CurrentStore.Id, otp);
+        _samrockProtocolService.Remove(storeData.Id, otp);
         return Ok(new { message = "Wallet setup successfully.", result });
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode, 
-        SamrockProtocolKeys key, SamrockProtocolSetupResponse result)
+        StoreData storeData, SamrockProtocolKeys key, SamrockProtocolSetupResponse result)
     {
         if (string.IsNullOrEmpty(derivationScheme) || _explorerProvider.GetNetwork(networkCode) == null)
         {
@@ -135,7 +141,7 @@ public class AquaController : Controller
             var wallet = _walletProvider.GetWallet(network);
             await wallet.TrackAsync(strategy.AccountDerivation);
 
-            ConfigureStorePaymentMethod(strategy, network);
+            await ConfigureStorePaymentMethod(storeData, strategy, network);
 
             result.Results[key] = new SamrockProtocolResponse(true, null, null);
         }
@@ -145,18 +151,18 @@ public class AquaController : Controller
         }
     }
 
-    private void ConfigureStorePaymentMethod(DerivationSchemeSettings strategy, BTCPayNetwork network)
+    private async Task ConfigureStorePaymentMethod(StoreData storeData, DerivationSchemeSettings strategy, BTCPayNetwork network)
     {
         var paymentMethodId = PaymentTypes.CHAIN.GetPaymentMethodId(network.CryptoCode);
-        CurrentStore.SetPaymentMethodConfig(_handlers[paymentMethodId], strategy);
+        storeData.SetPaymentMethodConfig(_handlers[paymentMethodId], strategy);
 
-        var storeBlob = CurrentStore.GetStoreBlob();
+        var storeBlob = storeData.GetStoreBlob();
         storeBlob.SetExcluded(paymentMethodId, false);
         storeBlob.PayJoinEnabled = false;
-        CurrentStore.SetStoreBlob(storeBlob);
+        storeData.SetStoreBlob(storeBlob);
 
-        _storeRepository.UpdateStore(CurrentStore);
-        _eventAggregator.Publish(new WalletChangedEvent { WalletId = new WalletId(CurrentStore.Id, network.CryptoCode) });
+        await _storeRepository.UpdateStore(storeData);
+        _eventAggregator.Publish(new WalletChangedEvent { WalletId = new WalletId(storeData.Id, network.CryptoCode) });
     }
 
     private static SamrockProtocolRequest TryDeserializeJson(string json, out Exception parsingException)
