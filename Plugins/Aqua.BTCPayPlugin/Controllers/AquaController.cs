@@ -73,7 +73,7 @@ public class AquaController : Controller
             return View(model);
         }
 
-        var otp = GenerateOtp();
+        var otp = OtpGenerator.Generate();
         model.StoreId = CurrentStore.Id;
         model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
         model.QrCode = GenerateSetupUrl(model, otp);
@@ -82,6 +82,8 @@ public class AquaController : Controller
         return View(model);
     }
 
+    [AllowAnonymous]
+    // TODO: Add rate limiting, maybe 3 per minute
     [HttpPost("samrockprotocol")]
     public async Task<IActionResult> SamrockProtocol(string otp)
     {
@@ -171,8 +173,6 @@ public class AquaController : Controller
             return null;
         }
     }
-
-    private string GenerateOtp() => new(Convert.ToBase64String(Guid.NewGuid().ToByteArray()).Take(21).ToArray());
 
     private string GenerateSetupUrl(ImportWalletsViewModel model, string otp)
     {
