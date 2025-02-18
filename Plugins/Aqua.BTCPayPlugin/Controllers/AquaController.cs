@@ -91,9 +91,10 @@ public class AquaController : Controller
         }
 
         var jsonField = Request.Form["json"];
-        if (!TryDeserializeJson(jsonField, out SamrockProtocolSetupModel setupModel))
+        var setupModel = TryDeserializeJson(jsonField, out Exception parsingError);
+        if (setupModel == null)
         {
-            return BadRequest(new { error = "Invalid JSON format." });
+            return BadRequest(new { message = "Invalid JSON format.", error = parsingError });
         }
 
         var result = new SamrockProtocolResultModel();
@@ -155,17 +156,18 @@ public class AquaController : Controller
         _eventAggregator.Publish(new WalletChangedEvent { WalletId = new WalletId(CurrentStore.Id, network.CryptoCode) });
     }
 
-    private static bool TryDeserializeJson(string json, out SamrockProtocolSetupModel model)
+    private static SamrockProtocolSetupModel TryDeserializeJson(string json, out Exception parsingError)
     {
         try
         {
-            model = JsonConvert.DeserializeObject<SamrockProtocolSetupModel>(json);
-            return true;
+            var model = JsonConvert.DeserializeObject<SamrockProtocolSetupModel>(json);
+            parsingError = null;
+            return model;
         }
-        catch
+        catch (Exception ex)
         {
-            model = null;
-            return false;
+            parsingError = ex;
+            return null;
         }
     }
 
