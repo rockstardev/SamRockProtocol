@@ -87,17 +87,17 @@ public class AquaController : Controller
     {
         if (!_samrockProtocolService.TryGet(CurrentStore.Id, otp, out var importWalletModel))
         {
-            return NotFound(new { error = "OTP not found or expired." });
+            return NotFound(new SamrockProtocolResponse(false, "OTP not found or expired.", null));
         }
 
         var jsonField = Request.Form["json"];
-        var setupModel = TryDeserializeJson(jsonField, out Exception parsingError);
+        var setupModel = TryDeserializeJson(jsonField, out Exception ex);
         if (setupModel == null)
         {
-            return BadRequest(new { message = "Invalid JSON format.", error = parsingError });
+            return BadRequest(new SamrockProtocolResponse(false, "Invalid JSON format.", ex));
         }
 
-        var result = new SamrockProtocolResultModel();
+        var result = new SamrockProtocolSetupResponse();
 
         if (setupModel.BtcChain != null)
         {
@@ -115,11 +115,12 @@ public class AquaController : Controller
         return Ok(new { message = "Wallet setup successfully.", result });
     }
 
-    private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode, SamrockProtocolKeys key, SamrockProtocolResultModel result)
+    private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode, 
+        SamrockProtocolKeys key, SamrockProtocolSetupResponse result)
     {
         if (string.IsNullOrEmpty(derivationScheme) || _explorerProvider.GetNetwork(networkCode) == null)
         {
-            result.Results[key] = new SamrockProtocolResultModel.Item { Success = false, Error = $"{networkCode} is not supported on this server." };
+            result.Results[key] = new SamrockProtocolResponse(false, $"{networkCode} is not supported on this server.", null);
             return;
         }
 
@@ -134,11 +135,11 @@ public class AquaController : Controller
 
             ConfigureStorePaymentMethod(strategy, network);
 
-            result.Results[key] = new SamrockProtocolResultModel.Item { Success = true };
+            result.Results[key] = new SamrockProtocolResponse(true, null, null);
         }
         catch (Exception ex)
         {
-            result.Results[key] = new SamrockProtocolResultModel.Item { Success = false, Error = ex.Message };
+            result.Results[key] = new SamrockProtocolResponse(false, null, ex);
         }
     }
 
@@ -156,17 +157,17 @@ public class AquaController : Controller
         _eventAggregator.Publish(new WalletChangedEvent { WalletId = new WalletId(CurrentStore.Id, network.CryptoCode) });
     }
 
-    private static SamrockProtocolSetupModel TryDeserializeJson(string json, out Exception parsingError)
+    private static SamrockProtocolRequest TryDeserializeJson(string json, out Exception parsingException)
     {
         try
         {
-            var model = JsonConvert.DeserializeObject<SamrockProtocolSetupModel>(json);
-            parsingError = null;
+            var model = JsonConvert.DeserializeObject<SamrockProtocolRequest>(json);
+            parsingException = null;
             return model;
         }
         catch (Exception ex)
         {
-            parsingError = ex;
+            parsingException = ex;
             return null;
         }
     }
@@ -225,7 +226,7 @@ public class ImportWalletsViewModel
     public bool LiquidSupportedOnServer { get; set; }
 }
 
-public class SamrockProtocolSetupModel
+public class SamrockProtocolRequest
 {
     public BtcChainSetupModel BtcChain { get; set; }
     public BtcLnSetupModel BtcLn { get; set; }
@@ -257,7 +258,7 @@ public class BtcChainSetupModel
 
     public override string ToString()
     {
-        return $"{Xpub}{SamrockProtocolSetupModel.TypeToString(Type)}";
+        return $"{Xpub}{SamrockProtocolRequest.TypeToString(Type)}";
     }
 }
 
@@ -270,7 +271,7 @@ public class LiquidChainSetupModel
 
     public override string ToString()
     {
-        return $"{Xpub}{SamrockProtocolSetupModel.TypeToString(Type)}-[slip77={BlindingKey}]";
+        return $"{Xpub}{SamrockProtocolRequest.TypeToString(Type)}-[slip77={BlindingKey}]";
     }
 }
 
@@ -284,15 +285,23 @@ public enum AddressTypes
     P2PKH, P2SH_P2WPKH, P2WPKH, P2TR
 }
 
-public class SamrockProtocolResultModel
+public class SamrockProtocolSetupResponse
 {
-    public Dictionary<SamrockProtocolKeys, Item> Results { get; init; } = new();
+    public Dictionary<SamrockProtocolKeys, SamrockProtocolResponse> Results { get; init; } = new();
+}
 
-    public class Item
+public class SamrockProtocolResponse
+{
+    public SamrockProtocolResponse(bool success, string message, Exception exception)
     {
-        public bool Success { get; set; }
-        public string Error { get; set; }
+        Success = success;
+        Message = message;
+        Exception = exception;
     }
+
+    public bool Success { get; set; }
+    public string Message { get; set; }
+    public Exception Exception { get; set; }
 }
 
 public enum SamrockProtocolKeys
