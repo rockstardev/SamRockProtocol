@@ -51,6 +51,12 @@ public class AquaController : Controller
 
     [FromRoute] public string StoreId { get; set; }
 
+    [HttpGet("testjson")]
+    public IActionResult TestJson()
+    {
+        return View();
+    }
+
     [HttpGet("import-wallets")]
     public IActionResult ImportWallets()
     {
@@ -87,7 +93,7 @@ public class AquaController : Controller
     public IActionResult SamrockProtocolStatus()
     {
         var otp = Request.Query["otp"].ToString();
-        return Ok(_samrockProtocolService.OtpStatus(otp));
+        return Ok(new { status = _samrockProtocolService.OtpStatus(otp)?.ToString().ToLowerInvariant()});
     }
 
     [AllowAnonymous]
@@ -130,7 +136,7 @@ public class AquaController : Controller
 
         var allSuccess = result.Results.Values.All(a => a.Success);
         _samrockProtocolService.OtpUsed(otp, allSuccess);
-        return Ok(new { message = "Wallet setup successfully.", result });
+        return Ok(new { Success = true, Message = "Wallet setup successfully.", Result = result });
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode, 

@@ -59,7 +59,7 @@ public class SamrockProtocolHostedService (
         if (_samrockImportDictionary.TryGetValue(otp, out var value))
         {
             model = value;
-            return false;
+            return true;
         }
 
         model = null;

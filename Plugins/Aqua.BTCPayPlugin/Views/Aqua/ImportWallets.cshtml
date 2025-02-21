@@ -81,32 +81,12 @@ else
 
         pollStatus();
     });
-</script>
-    
+    </script>
     @if (AquaPlugin.IsDevMode)
     {
-        <p>
-            <form action="@Model.QrCode" method="post">
-                <textarea name="json" rows="8" cols="100">
-{
-  "BtcChain": {
-    "Xpub": "tpubDDPCDkBPaFE5PDhs5NJDb38RKzDuuRcMhcGgGHSdVFFPiX13R1BZCBm3xS48zJRkoqqZEEixpjViweQqSAfDRXHZV6gEeWoGDUnEqQZ42Gg",
-    "DerivationPath": "m/84'/0'/1'/0",
-    "Type": "P2WPKH"
-  },
-  "LiquidChain": {
-    "Xpub": "tpubD6NzVbkrYhZ4YS6KzQNC9CwKCxcpMFuFfg1uHRuYjFaKMN6gyNnWJ67A349DkZQnrSBLEU7mmrzXH6hrCvXzJzRU6HbK8YGS4D9qCo4AKJ2",
-    "BlindingKey": "e2eb4f6a06282febfb3c1fb3fe58fa73c833c564b8810e252a9fe9582454d4e4",
-    "DerivationPath": "m/49'/1776'/1'/0",
-    "Type": "P2SH_P2WPKH"
-  },
-  "BtcLn": {
-    "UseLiquidBoltz": "true"
-  }
-}
-                </textarea>
-                <button type="submit" class="btn btn-primary" text-translate="true">Test Setup</button>
-            </form>
-        </p>
+        <div class="form-group my-4">
+            <label for="qrCodeValue">QR Code Value:</label>
+            <input type="text" id="qrCodeValue" class="form-control" value="@Model.QrCode" readonly />
+        </div>
     }
 }
