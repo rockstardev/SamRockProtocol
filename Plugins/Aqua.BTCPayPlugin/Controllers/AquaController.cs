@@ -73,21 +73,30 @@ public class AquaController : Controller
             return View(model);
         }
 
-        var otp = OtpGenerator.Generate();
+        model.Otp = OtpGenerator.Generate();
         model.StoreId = StoreId;
         model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
-        model.QrCode = GenerateSetupUrl(model, otp);
-
-        _samrockProtocolService.Add(otp, model);
+        model.QrCode = GenerateSetupUrl(model, model.Otp);
+        
+        _samrockProtocolService.Add(model.Otp, model);
         return View(model);
+    }
+
+    // TODO: Add rate limiting, maybe 3 per minute
+    [HttpGet("samrockprotocol/status")]
+    public IActionResult SamrockProtocolStatus()
+    {
+        var otp = Request.Query["otp"].ToString();
+        return Ok(_samrockProtocolService.OtpStatus(otp));
     }
 
     [AllowAnonymous]
     // TODO: Add rate limiting, maybe 3 per minute
     [HttpPost("samrockprotocol")]
-    public async Task<IActionResult> SamrockProtocol(string otp)
+    public async Task<IActionResult> SamrockProtocol()
     {
-        if (!_samrockProtocolService.TryGet(otp, out var importWalletModel))
+        var otp = Request.Query["otp"].ToString();
+        if (String.IsNullOrEmpty(otp) || !_samrockProtocolService.TryGet(otp, out var importWalletModel))
         {
             return NotFound(new SamrockProtocolResponse(false, "OTP not found or expired.", null));
         }
@@ -119,7 +128,8 @@ public class AquaController : Controller
         }
         // TODO: Add support for lightning
 
-        _samrockProtocolService.Remove(storeData.Id, otp);
+        var allSuccess = result.Results.Values.All(a => a.Success);
+        _samrockProtocolService.OtpUsed(otp, allSuccess);
         return Ok(new { message = "Wallet setup successfully.", result });
     }
 
@@ -228,6 +238,7 @@ public class ImportWalletsViewModel
     [DisplayName("Liquid Bitcoin")]
     public bool LiquidChain { get; set; }
     public string QrCode { get; set; }
+    public string Otp { get; set; }
     public DateTimeOffset Expires { get; set; }
     public bool LiquidSupportedOnServer { get; set; }
 }

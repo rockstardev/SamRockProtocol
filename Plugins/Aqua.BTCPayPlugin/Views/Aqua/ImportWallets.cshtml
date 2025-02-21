@@ -48,6 +48,41 @@ else
     <p>
         <vc:qr-code data="@(Model.QrCode)" />
     </p>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const otp = "@Model.Otp";
+        const statusUrl = "@Model.QrCode"
+                .replace("/aqua/samrockprotocol", "/aqua/samrockprotocol/status").split('?')[0]
+                + "?otp=" + otp;
+
+        async function pollStatus() {
+            try {
+                const response = await fetch(statusUrl);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === "true") {
+                        // Handle the successful import
+                        alert("Wallet import completed successfully.");
+                        location.reload();
+                    } else if (data.status === "false") {
+                        // Handle the unsuccessful import
+                        alert("Wallet import failed.");
+                    } else {
+                        // Continue polling if status is null or not present
+                        setTimeout(pollStatus, 1000);
+                    }
+                } else {
+                    console.error("Failed to fetch status:", response.statusText);
+                }
+            } catch (error) {
+                console.error("Error fetching status:", error);
+            }
+        }
+
+        pollStatus();
+    });
+</script>
+    
     @if (AquaPlugin.IsDevMode)
     {
         <p>

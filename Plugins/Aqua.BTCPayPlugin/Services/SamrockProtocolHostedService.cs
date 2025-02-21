@@ -16,7 +16,14 @@ public class SamrockProtocolHostedService (
         ILogger<PendingTransactionService> logger)
     : EventHostedServiceBase(eventAggregator, logger), IPeriodicTask
 {
-    private Dictionary<string, ImportWalletsViewModel> _samrockImportDictionary = new();
+    private readonly Dictionary<string, ImportWalletsViewModel> _samrockImportDictionary = new();
+    private readonly Dictionary<string, SamrockResult> _samrockResults = new();
+
+    private class SamrockResult
+    {
+        public bool ImportSuccessful { get; set; }
+        public DateTimeOffset Expires { get; set; }
+    }
     
     public Task Do(CancellationToken cancellationToken)
     {
@@ -30,11 +37,15 @@ public class SamrockProtocolHostedService (
     {
         if (evt is CheckForExpiryEvent)
         {
-            var list = _samrockImportDictionary
+            _samrockImportDictionary
                 .Where(a => a.Value.Expires <= DateTimeOffset.UtcNow)
-                .ToList();
-                
-            list.ForEach(a => _samrockImportDictionary.Remove(a.Key));
+                .ToList()
+                .ForEach(a => _samrockImportDictionary.Remove(a.Key));
+            
+            _samrockResults
+                .Where(a => a.Value.Expires <= DateTimeOffset.UtcNow)
+                .ToList()
+                .ForEach(a => _samrockResults.Remove(a.Key));
         }
     }
 
@@ -45,15 +56,14 @@ public class SamrockProtocolHostedService (
 
     public bool TryGet(string otp, out ImportWalletsViewModel model)
     {
-        var import = _samrockImportDictionary[otp];
-        if (import == null)
+        if (_samrockImportDictionary.TryGetValue(otp, out var value))
         {
-            model = null;
+            model = value;
             return false;
         }
 
-        model = import;
-        return true;
+        model = null;
+        return false;
     }
 
     public void Remove(string storeId, string otp)
@@ -63,5 +73,27 @@ public class SamrockProtocolHostedService (
         {
             _samrockImportDictionary.Remove(otp);
         }
+    }
+
+    public void OtpUsed(string otp, bool importSuccessful)
+    {
+        if (_samrockImportDictionary.Remove(otp, out var value))
+        {
+            _samrockResults.Add(otp, new SamrockResult
+            {
+                ImportSuccessful = importSuccessful,
+                Expires = value.Expires
+            });
+        }
+    }
+    
+    public bool? OtpStatus(string otp)
+    {
+        if (_samrockResults.TryGetValue(otp, out var value))
+        {
+            return value.ImportSuccessful;
+        }
+
+        return null;
     }
 }
