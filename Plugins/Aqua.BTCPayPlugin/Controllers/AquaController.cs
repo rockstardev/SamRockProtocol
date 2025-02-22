@@ -16,7 +16,6 @@ using BTCPayServer.Services.Stores;
 using BTCPayServer.Services.Wallets;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NBitcoin;
 using Newtonsoft.Json;
 using NicolasDorier.RateLimits;
@@ -89,13 +88,27 @@ public class AquaController : Controller
         return View(model);
     }
 
-    [HttpGet("samrockprotocol/status")]
-    public IActionResult SamrockProtocolStatus()
+    [HttpGet("import-wallets/status")]
+    public IActionResult ImportWalletStatus()
     {
         var otp = Request.Query["otp"].ToString();
         return Ok(new { status = _samrockProtocolService.OtpStatus(otp)?.ToString().ToLowerInvariant()});
     }
+    
+    [HttpGet("import-result")]
+    public IActionResult ImportResult(string otp)
+    {
+        var otpStatus = _samrockProtocolService.OtpStatus(otp);
+        var model = new ImportResultViewModel
+        {
+            OtpStatus = otpStatus
+        };
 
+        return View(model);
+    }
+    
+
+    // maybe best to move it to a separate controller
     [AllowAnonymous]
     [RateLimitsFilter("SamrockProtocol", Scope = RateLimitsScope.RemoteAddress)]
     [HttpPost("samrockprotocol")]
@@ -247,6 +260,11 @@ public class ImportWalletsViewModel
     public string Otp { get; set; }
     public DateTimeOffset Expires { get; set; }
     public bool LiquidSupportedOnServer { get; set; }
+}
+
+public class ImportResultViewModel
+{
+    public bool? OtpStatus { get; set; }
 }
 
 public class SamrockProtocolRequest

@@ -64,7 +64,7 @@ else
         document.addEventListener("DOMContentLoaded", function() {
             const otp = "@Model.Otp";
             const statusUrl = "@Model.QrCode"
-                    .replace("/aqua/samrockprotocol", "/aqua/samrockprotocol/status").split('?')[0]
+                    .replace("/aqua/samrockprotocol", "/aqua/import-wallets/status").split('?')[0]
                 + "?otp=" + otp;
             let attempts = 0;
 
@@ -74,23 +74,14 @@ else
                     if (response.ok) {
                         const data = await response.json();
 
-                        if (data.status === "true") {
-                            document.getElementById('import-container').style.display = 'none';
-                            document.getElementById('import-wallets-title').innerText = "Wallets successfully imported! 🎉";
-                            document.getElementById('import-wallets-title').style.color = "green";
-                            document.getElementById('dashboard-button').style.display = 'block';
-                        } else if (data.status === "false") {
-                            document.getElementById('import-container').style.display = 'none';
-                            document.getElementById('import-wallets-title').innerText = "Wallet import failed. Please check logs.";
-                            document.getElementById('import-wallets-title').style.color = "red";
-                            document.getElementById('dashboard-button').style.display = 'block';
-                        } else if (!data.status || data.status.trim() === "") {
+                        if (data.status === "true" || data.status === "false") {
+                            window.location.href = "import-result?otp="+ otp;
+                            return;
+                        }
+                        else if (!data.status || data.status.trim() === "") {
                             attempts++;
                             if (attempts >= 120) {
-                                document.getElementById('import-container').style.display = 'none';
-                                document.getElementById('import-wallets-title').innerText = "Invalid OTP. Please try again.";
-                                document.getElementById('import-wallets-title').style.color = "orange";
-                                document.getElementById('dashboard-button').style.display = 'block';
+                                window.location.href = "import-result?otp="+ otp;
                                 return;
                             }
                             setTimeout(pollStatus, 1000);
