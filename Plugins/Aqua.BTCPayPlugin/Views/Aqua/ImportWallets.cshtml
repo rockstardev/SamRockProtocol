@@ -5,7 +5,7 @@
 @{
     ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "Import Wallets from Aqua");
 }
-<h1>@ViewData["Title"]</h1>
+<h1 id="import-wallets-title">@ViewData["Title"]</h1>
 
 @if (Model.QrCode == null)
 {
@@ -44,49 +44,67 @@
 }
 else
 {
-    <p>Scan this QR code with Aqua wallet</p>
-    <p>
-        <vc:qr-code data="@(Model.QrCode)" />
-    </p>
-    <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const otp = "@Model.Otp";
-        const statusUrl = "@Model.QrCode"
-                .replace("/aqua/samrockprotocol", "/aqua/samrockprotocol/status").split('?')[0]
-                + "?otp=" + otp;
-
-        async function pollStatus() {
-            try {
-                const response = await fetch(statusUrl);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === "true") {
-                        // Handle the successful import
-                        alert("Wallet import completed successfully.");
-                        location.reload();
-                    } else if (data.status === "false") {
-                        // Handle the unsuccessful import
-                        alert("Wallet import failed.");
-                    } else {
-                        // Continue polling if status is null or not present
-                        setTimeout(pollStatus, 1000);
-                    }
-                } else {
-                    console.error("Failed to fetch status:", response.statusText);
-                }
-            } catch (error) {
-                console.error("Error fetching status:", error);
-            }
+    <div id="import-container">
+        <p>Scan this QR code with Aqua wallet</p>
+        <p>
+            <vc:qr-code data="@(Model.QrCode)" />
+        </p>
+        @if (AquaPlugin.IsDevMode)
+        {
+            <div class="form-group my-4">
+                <label for="qrCodeValue">QR Code Value:</label>
+                <input type="text" id="qrCodeValue" class="form-control" value="@Model.QrCode" readonly />
+            </div>
         }
+    </div>
 
-        pollStatus();
-    });
+    <button id="dashboard-button" style="display: none; margin-top: 20px;" class="btn btn-secondary" onclick="window.location.href='/'">Go back to Dashboard</button>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const otp = "@Model.Otp";
+            const statusUrl = "@Model.QrCode"
+                    .replace("/aqua/samrockprotocol", "/aqua/samrockprotocol/status").split('?')[0]
+                + "?otp=" + otp;
+            let attempts = 0;
+
+            async function pollStatus() {
+                try {
+                    const response = await fetch(statusUrl);
+                    if (response.ok) {
+                        const data = await response.json();
+
+                        if (data.status === "true") {
+                            document.getElementById('import-container').style.display = 'none';
+                            document.getElementById('import-wallets-title').innerText = "Wallets successfully imported! 🎉";
+                            document.getElementById('import-wallets-title').style.color = "green";
+                            document.getElementById('dashboard-button').style.display = 'block';
+                        } else if (data.status === "false") {
+                            document.getElementById('import-container').style.display = 'none';
+                            document.getElementById('import-wallets-title').innerText = "Wallet import failed. Please check logs.";
+                            document.getElementById('import-wallets-title').style.color = "red";
+                            document.getElementById('dashboard-button').style.display = 'block';
+                        } else if (!data.status || data.status.trim() === "") {
+                            attempts++;
+                            if (attempts >= 120) {
+                                document.getElementById('import-container').style.display = 'none';
+                                document.getElementById('import-wallets-title').innerText = "Invalid OTP. Please try again.";
+                                document.getElementById('import-wallets-title').style.color = "orange";
+                                document.getElementById('dashboard-button').style.display = 'block';
+                                return;
+                            }
+                            setTimeout(pollStatus, 1000);
+                        } else {
+                            setTimeout(pollStatus, 1000);
+                        }
+                    } else {
+                        console.error("Failed to fetch status:", response.statusText);
+                    }
+                } catch (error) {
+                    console.error("Error fetching status:", error);
+                }
+            }
+            pollStatus();
+        });
     </script>
-    @if (AquaPlugin.IsDevMode)
-    {
-        <div class="form-group my-4">
-            <label for="qrCodeValue">QR Code Value:</label>
-            <input type="text" id="qrCodeValue" class="form-control" value="@Model.QrCode" readonly />
-        </div>
-    }
 }
