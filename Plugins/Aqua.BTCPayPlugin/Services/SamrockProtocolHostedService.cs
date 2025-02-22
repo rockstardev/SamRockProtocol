@@ -8,12 +8,14 @@ using BTCPayServer;
 using BTCPayServer.Data;
 using BTCPayServer.HostedServices;
 using Microsoft.Extensions.Logging;
+using NicolasDorier.RateLimits;
 
 namespace Aqua.BTCPayPlugin.Services;
 
 public class SamrockProtocolHostedService (
         EventAggregator eventAggregator,
-        ILogger<PendingTransactionService> logger)
+        ILogger<PendingTransactionService> logger,
+        RateLimitService rateLimitService)
     : EventHostedServiceBase(eventAggregator, logger), IPeriodicTask
 {
     private readonly Dictionary<string, ImportWalletsViewModel> _samrockImportDictionary = new();
@@ -24,9 +26,17 @@ public class SamrockProtocolHostedService (
         public bool ImportSuccessful { get; set; }
         public DateTimeOffset Expires { get; set; }
     }
+
+    private bool _rateLimitsConfigured = false;
     
     public Task Do(CancellationToken cancellationToken)
     {
+        if (!_rateLimitsConfigured)
+        {
+            rateLimitService.SetZone("zone=SamrockProtocol rate=5r/min burst=3 nodelay");
+            _rateLimitsConfigured = true;
+        }
+        
         PushEvent(new CheckForExpiryEvent());
         return Task.CompletedTask;
     }

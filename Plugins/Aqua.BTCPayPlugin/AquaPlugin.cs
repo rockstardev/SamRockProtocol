@@ -6,6 +6,7 @@ using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Abstractions.Services;
 using Microsoft.Extensions.DependencyInjection;
+using NicolasDorier.RateLimits;
 
 namespace Aqua.BTCPayPlugin;
 
@@ -35,5 +36,7 @@ public class AquaPlugin : BaseBTCPayServerPlugin
 
         services.AddSingleton<SamrockProtocolHostedService>();
         services.AddScheduledTask<SamrockProtocolHostedService>(TimeSpan.FromMinutes(1));
+
+        services.AddRateLimits(); // configured in SamrockProtocolHostedService
     }
 }

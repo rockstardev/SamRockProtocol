@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using NBitcoin;
 using Newtonsoft.Json;
+using NicolasDorier.RateLimits;
 
 namespace Aqua.BTCPayPlugin.Controllers;
 
@@ -88,7 +89,6 @@ public class AquaController : Controller
         return View(model);
     }
 
-    // TODO: Add rate limiting, maybe 3 per minute
     [HttpGet("samrockprotocol/status")]
     public IActionResult SamrockProtocolStatus()
     {
@@ -97,7 +97,7 @@ public class AquaController : Controller
     }
 
     [AllowAnonymous]
-    // TODO: Add rate limiting, maybe 3 per minute
+    [RateLimitsFilter("SamrockProtocol", Scope = RateLimitsScope.RemoteAddress)]
     [HttpPost("samrockprotocol")]
     public async Task<IActionResult> SamrockProtocol()
     {
