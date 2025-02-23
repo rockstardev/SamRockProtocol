@@ -6,17 +6,17 @@
     ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "Aqua Wallet Import Result");
 }
 
-@if (Model.OtpStatus == true)
+@switch (Model.OtpStatus)
 {
-    <h1 style="color: green;">Wallets successfully imported! 🎉</h1>
-}
-else if (Model.OtpStatus == false)
-{
-    <h1 style="color: red;">Wallet import failed. Please check logs.</h1>
-}
-else
-{
-    <h1 style="color: orange;">Invalid OTP. Please try again.</h1>
+    case true:
+        <h1 style="color: green;">Wallets successfully imported! 🎉</h1>
+        break;
+    case false:
+        <h1 style="color: red;">Wallet import failed. Please check logs.</h1>
+        break;
+    default:
+        <h1 style="color: orange;">Invalid OTP. Please try again.</h1>
+        break;
 }
 
 <div class="form-group my-4">
