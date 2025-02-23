@@ -26,12 +26,12 @@ namespace Aqua.BTCPayPlugin.Controllers;
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class AquaController : Controller
 {
-    private readonly SamrockProtocolHostedService _samrockProtocolService;
-    private readonly PaymentMethodHandlerDictionary _handlers;
-    private readonly ExplorerClientProvider _explorerProvider;
-    private readonly BTCPayWalletProvider _walletProvider;
-    private readonly StoreRepository _storeRepository;
     private readonly EventAggregator _eventAggregator;
+    private readonly ExplorerClientProvider _explorerProvider;
+    private readonly PaymentMethodHandlerDictionary _handlers;
+    private readonly SamrockProtocolHostedService _samrockProtocolService;
+    private readonly StoreRepository _storeRepository;
+    private readonly BTCPayWalletProvider _walletProvider;
 
     public AquaController(
         SamrockProtocolHostedService samrockProtocolService,
@@ -83,7 +83,7 @@ public class AquaController : Controller
         model.StoreId = StoreId;
         model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
         model.QrCode = GenerateSetupUrl(model, model.Otp);
-        
+
         _samrockProtocolService.Add(model.Otp, model);
         return View(model);
     }
@@ -92,9 +92,9 @@ public class AquaController : Controller
     public IActionResult ImportWalletStatus()
     {
         var otp = Request.Query["otp"].ToString();
-        return Ok(new { status = _samrockProtocolService.OtpStatus(otp)?.ToString().ToLowerInvariant()});
+        return Ok(new { status = _samrockProtocolService.OtpStatus(otp)?.ToString().ToLowerInvariant() });
     }
-    
+
     [HttpGet("import-result")]
     public IActionResult ImportResult(string otp)
     {
@@ -106,7 +106,7 @@ public class AquaController : Controller
 
         return View(model);
     }
-    
+
 
     // maybe best to move it to a separate controller
     [AllowAnonymous]
@@ -115,36 +115,24 @@ public class AquaController : Controller
     public async Task<IActionResult> SamrockProtocol()
     {
         var otp = Request.Query["otp"].ToString();
-        if (String.IsNullOrEmpty(otp) || !_samrockProtocolService.TryGet(otp, out var importWalletModel))
-        {
+        if (string.IsNullOrEmpty(otp) || !_samrockProtocolService.TryGet(otp, out var importWalletModel))
             return NotFound(new SamrockProtocolResponse(false, "OTP not found or expired.", null));
-        }
-        
+
         var storeData = await _storeRepository.FindStore(importWalletModel.StoreId);
-        if (storeData == null)
-        {
-            return NotFound(new SamrockProtocolResponse(false, "Store not found.", null));
-        }
-        
+        if (storeData == null) return NotFound(new SamrockProtocolResponse(false, "Store not found.", null));
+
         var jsonField = Request.Form["json"];
-        var setupModel = TryDeserializeJson(jsonField, out Exception ex);
-        if (setupModel == null)
-        {
-            return BadRequest(new SamrockProtocolResponse(false, "Invalid JSON format.", ex));
-        }
+        var setupModel = TryDeserializeJson(jsonField, out var ex);
+        if (setupModel == null) return BadRequest(new SamrockProtocolResponse(false, "Invalid JSON format.", ex));
 
         var result = new SamrockProtocolSetupResponse();
 
         if (setupModel.BtcChain != null)
-        {
-            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.DerivationPath, "BTC", 
+            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.DerivationPath, "BTC",
                 storeData, SamrockProtocolKeys.BtcChain, result);
-        }
         if (setupModel.LiquidChain != null)
-        {
-            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath, "LBTC", 
+            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath, "LBTC",
                 storeData, SamrockProtocolKeys.LiquidChain, result);
-        }
         // TODO: Add support for lightning
 
         var allSuccess = result.Results.Values.All(a => a.Success);
@@ -152,12 +140,13 @@ public class AquaController : Controller
         return Ok(new { Success = true, Message = "Wallet setup successfully.", Result = result });
     }
 
-    private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode, 
+    private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode,
         StoreData storeData, SamrockProtocolKeys key, SamrockProtocolSetupResponse result)
     {
         if (string.IsNullOrEmpty(derivationScheme) || _explorerProvider.GetNetwork(networkCode) == null)
         {
-            result.Results[key] = new SamrockProtocolResponse(false, $"{networkCode} is not supported on this server.", null);
+            result.Results[key] =
+                new SamrockProtocolResponse(false, $"{networkCode} is not supported on this server.", null);
             return;
         }
 
@@ -180,7 +169,8 @@ public class AquaController : Controller
         }
     }
 
-    private async Task ConfigureStorePaymentMethod(StoreData storeData, DerivationSchemeSettings strategy, BTCPayNetwork network)
+    private async Task ConfigureStorePaymentMethod(StoreData storeData, DerivationSchemeSettings strategy,
+        BTCPayNetwork network)
     {
         var paymentMethodId = PaymentTypes.CHAIN.GetPaymentMethodId(network.CryptoCode);
         storeData.SetPaymentMethodConfig(_handlers[paymentMethodId], strategy);
@@ -219,7 +209,8 @@ public class AquaController : Controller
             model.BtcLn ? "btc-ln" : null
         }.Where(p => p != null));
 
-        return $"{baseUrl}/plugins/{model.StoreId}/aqua/samrockprotocol?setup={Uri.EscapeDataString(setupParams)}&otp={Uri.EscapeDataString(otp)}";
+        return
+            $"{baseUrl}/plugins/{model.StoreId}/aqua/samrockprotocol?setup={Uri.EscapeDataString(setupParams)}&otp={Uri.EscapeDataString(otp)}";
     }
 
     private DerivationSchemeSettings ParseDerivationStrategy(string derivationScheme, BTCPayNetwork network)
@@ -250,12 +241,13 @@ public class AquaController : Controller
 public class ImportWalletsViewModel
 {
     public string StoreId { get; set; }
-    [DisplayName("Bitcoin")]
-    public bool BtcChain { get; set; }
-    [DisplayName("Lightning")]
-    public bool BtcLn { get; set; }
-    [DisplayName("Liquid Bitcoin")]
-    public bool LiquidChain { get; set; }
+
+    [DisplayName("Bitcoin")] public bool BtcChain { get; set; }
+
+    [DisplayName("Lightning")] public bool BtcLn { get; set; }
+
+    [DisplayName("Liquid Bitcoin")] public bool LiquidChain { get; set; }
+
     public string QrCode { get; set; }
     public string Otp { get; set; }
     public DateTimeOffset Expires { get; set; }
@@ -323,7 +315,10 @@ public class BtcLnSetupModel
 
 public enum AddressTypes
 {
-    P2PKH, P2SH_P2WPKH, P2WPKH, P2TR
+    P2PKH,
+    P2SH_P2WPKH,
+    P2WPKH,
+    P2TR
 }
 
 public class SamrockProtocolSetupResponse

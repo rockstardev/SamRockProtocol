@@ -6,14 +6,14 @@
     ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "Test Wallet Import");
 }
 <h1>@ViewData["Title"]</h1>
-    
+
 @if (AquaPlugin.IsDevMode)
 {
     <p>
     <form id="testSetupForm" method="post">
         <div class="form-group my-4">
             <label for="formActionUrl">Form Action URL:</label>
-            <input type="text" id="formActionUrl" class="form-control" placeholder="Enter form action URL" />
+            <input type="text" id="formActionUrl" class="form-control" placeholder="Enter form action URL"/>
         </div>
         <textarea name="json" rows="8" cols="100">
 {
@@ -36,7 +36,7 @@
         <button type="submit" class="btn btn-primary" text-translate="true">Test Setup</button>
     </form>
     <script>
-        document.getElementById("testSetupForm").addEventListener("submit", function(event) {
+        document.getElementById("testSetupForm").addEventListener("submit", function (event) {
             var formActionUrl = document.getElementById("formActionUrl").value;
             if (formActionUrl) {
                 this.action = formActionUrl;

@@ -1,34 +1,34 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <LangVersion>12</LangVersion>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>12</LangVersion>
+    </PropertyGroup>
 
-  <!-- Plugin specific properties -->
-  <PropertyGroup>
-    <Product>zzz - Aqua SamRock</Product>
-    <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** Plugin for BTCPay Server implementing SamRock protocol to import wallet derivation keys and receive payments directly in Aqua from BTCPay Server store</Description>
-    <Version>1.0.10</Version>
-  </PropertyGroup>
+    <!-- Plugin specific properties -->
+    <PropertyGroup>
+        <Product>zzz - Aqua SamRock</Product>
+        <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** Plugin for BTCPay Server implementing SamRock protocol to import wallet derivation keys and receive payments directly in Aqua from BTCPay Server store</Description>
+        <Version>1.0.10</Version>
+    </PropertyGroup>
 
-  <!-- Plugin development properties -->
-  <PropertyGroup>
-    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-    <PreserveCompilationContext>false</PreserveCompilationContext>
-    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
-  </PropertyGroup>
+    <!-- Plugin development properties -->
+    <PropertyGroup>
+        <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+        <PreserveCompilationContext>false</PreserveCompilationContext>
+        <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    </PropertyGroup>
 
-  <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
-  <ItemDefinitionGroup>
-    <ProjectReference>
-      <Properties>StaticWebAssetsEnabled=false</Properties>
-      <Private>false</Private>
-      <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
-    </ProjectReference>
-  </ItemDefinitionGroup>
-  
-  <ItemGroup>
-    <ProjectReference Include="..\..\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
-    <EmbeddedResource Include="Resources\**" />
-  </ItemGroup>
+    <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
+    <ItemDefinitionGroup>
+        <ProjectReference>
+            <Properties>StaticWebAssetsEnabled=false</Properties>
+            <Private>false</Private>
+            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
+        </ProjectReference>
+    </ItemDefinitionGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\btcpayserver\BTCPayServer\BTCPayServer.csproj"/>
+        <EmbeddedResource Include="Resources\**"/>
+    </ItemGroup>
 </Project>

@@ -8,7 +8,7 @@ public class OtpGenerator
 
     public static string Generate(int length = 21)
     {
-        byte[] randomBytes = new byte[length];
+        var randomBytes = new byte[length];
         using (var rng = RandomNumberGenerator.Create())
         {
             rng.GetBytes(randomBytes);
