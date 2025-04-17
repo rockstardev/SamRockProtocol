@@ -128,10 +128,12 @@ public class AquaController : Controller
         var result = new SamrockProtocolSetupResponse();
 
         if (setupModel.BtcChain != null)
-            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.DerivationPath, "BTC",
+            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.Fingerprint,
+                setupModel.BtcChain.DerivationPath, "BTC", 
                 storeData, SamrockProtocolKeys.BtcChain, result);
         if (setupModel.LiquidChain != null)
-            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.DerivationPath, "LBTC",
+            await SetupWalletAsync(setupModel.LiquidChain.ToString(),  setupModel.BtcChain.Fingerprint,
+                setupModel.LiquidChain.DerivationPath, "LBTC", 
                 storeData, SamrockProtocolKeys.LiquidChain, result);
         // TODO: Add support for lightning
 
@@ -140,7 +142,7 @@ public class AquaController : Controller
         return Ok(new { Success = true, Message = "Wallet setup successfully.", Result = result });
     }
 
-    private async Task SetupWalletAsync(string derivationScheme, string derivationPath, string networkCode,
+    private async Task SetupWalletAsync(string derivationScheme, string fingerprint, string derivationPath, string networkCode,
         StoreData storeData, SamrockProtocolKeys key, SamrockProtocolSetupResponse result)
     {
         if (string.IsNullOrEmpty(derivationScheme) || _explorerProvider.GetNetwork(networkCode) == null)
@@ -154,6 +156,7 @@ public class AquaController : Controller
         {
             var network = _explorerProvider.GetNetwork(networkCode);
             var strategy = ParseDerivationStrategy(derivationScheme, network);
+            strategy.AccountKeySettings[0].RootFingerprint = HDFingerprint.Parse(fingerprint);
             strategy.AccountKeySettings[0].AccountKeyPath = new KeyPath(derivationPath);
 
             var wallet = _walletProvider.GetWallet(network);
@@ -286,6 +289,7 @@ public class SamrockProtocolRequest
 public class BtcChainSetupModel
 {
     public string Xpub { get; set; }
+    public string Fingerprint { get; set; }
     public string DerivationPath { get; set; }
     public AddressTypes Type { get; set; }
 
@@ -298,6 +302,7 @@ public class BtcChainSetupModel
 public class LiquidChainSetupModel
 {
     public string Xpub { get; set; }
+    public string Fingerprint { get; set; }
     public string DerivationPath { get; set; }
     public AddressTypes Type { get; set; }
     public string BlindingKey { get; set; }
