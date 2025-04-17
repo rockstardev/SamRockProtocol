@@ -12,7 +12,7 @@
     <form id="walletSettingsForm" method="post">
         <div class="form-group my-4">
             <div class="d-flex align-items-center">
-                <input asp-for="BtcChain" type="checkbox" class="btcpay-toggle me-3"/>
+                <input asp-for="BtcChain" type="checkbox" class="btcpay-toggle me-3" />
                 <label asp-for="BtcChain" class="form-check-label"></label>
             </div>
             <span asp-validation-for="BtcChain" class="text-danger"></span>
@@ -27,7 +27,7 @@
         <div class="form-group my-4">
             <div class="d-flex align-items-center">
                 <input asp-for="BtcLn" type="checkbox" class="btcpay-toggle me-3"
-                       disabled="@(!Model.LiquidSupportedOnServer)"/>
+                       disabled="@(!Model.LiquidSupportedOnServer)" />
                 <label asp-for="BtcLn" class="form-check-label"></label>
             </div>
             <span asp-validation-for="BtcLn" class="text-danger"></span>
@@ -35,7 +35,7 @@
         <div class="form-group my-4">
             <div class="d-flex align-items-center">
                 <input asp-for="LiquidChain" type="checkbox" class="btcpay-toggle me-3"
-                       disabled="@(!Model.LiquidSupportedOnServer)"/>
+                       disabled="@(!Model.LiquidSupportedOnServer)" />
                 <label asp-for="LiquidChain" class="form-check-label"></label>
             </div>
             <span asp-validation-for="LiquidChain" class="text-danger"></span>
@@ -49,13 +49,13 @@ else
     <div id="import-container">
         <p>Scan this QR code with Aqua wallet</p>
         <p>
-            <vc:qr-code data="@(Model.QrCode)"/>
+            <vc:qr-code data="@(Model.QrCode)" />
         </p>
         @if (AquaPlugin.IsDevMode)
         {
             <div class="form-group my-4">
                 <label for="qrCodeValue">QR Code Value:</label>
-                <input type="text" id="qrCodeValue" class="form-control" value="@Model.QrCode" readonly/>
+                <input type="text" id="qrCodeValue" class="form-control" value="@Model.QrCode" readonly />
             </div>
         }
     </div>

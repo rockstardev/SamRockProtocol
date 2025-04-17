@@ -49,7 +49,8 @@ public class AquaController : Controller
         _eventAggregator = eventAggregator;
     }
 
-    [FromRoute] public string StoreId { get; set; }
+    [FromRoute]
+    public string StoreId { get; set; }
 
     [HttpGet("testjson")]
     public IActionResult TestJson()
@@ -99,10 +100,7 @@ public class AquaController : Controller
     public IActionResult ImportResult(string otp)
     {
         var otpStatus = _samrockProtocolService.OtpStatus(otp);
-        var model = new ImportResultViewModel
-        {
-            OtpStatus = otpStatus
-        };
+        var model = new ImportResultViewModel { OtpStatus = otpStatus };
 
         return View(model);
     }
@@ -129,17 +127,20 @@ public class AquaController : Controller
 
         if (setupModel.BtcChain != null)
             await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.Fingerprint,
-                setupModel.BtcChain.DerivationPath, "BTC", 
-                storeData, SamrockProtocolKeys.BtcChain, result);
+                setupModel.BtcChain.DerivationPath, "BTC", storeData, SamrockProtocolKeys.BtcChain, result);
         if (setupModel.LiquidChain != null)
-            await SetupWalletAsync(setupModel.LiquidChain.ToString(),  setupModel.BtcChain.Fingerprint,
-                setupModel.LiquidChain.DerivationPath, "LBTC", 
-                storeData, SamrockProtocolKeys.LiquidChain, result);
+            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.BtcChain.Fingerprint,
+                setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
         // TODO: Add support for lightning
 
         var allSuccess = result.Results.Values.All(a => a.Success);
         _samrockProtocolService.OtpUsed(otp, allSuccess);
-        return Ok(new { Success = true, Message = "Wallet setup successfully.", Result = result });
+        return Ok(new
+        {
+            Success = true,
+            Message = "Wallet setup successfully.",
+            Result = result
+        });
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string fingerprint, string derivationPath, string networkCode,
@@ -205,12 +206,8 @@ public class AquaController : Controller
     private string GenerateSetupUrl(ImportWalletsViewModel model, string otp)
     {
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
-        var setupParams = string.Join(",", new[]
-        {
-            model.BtcChain ? "btc-chain" : null,
-            model.LiquidChain ? "liquid-chain" : null,
-            model.BtcLn ? "btc-ln" : null
-        }.Where(p => p != null));
+        var setupParams = string.Join(",",
+            new[] { model.BtcChain ? "btc-chain" : null, model.LiquidChain ? "liquid-chain" : null, model.BtcLn ? "btc-ln" : null }.Where(p => p != null));
 
         return
             $"{baseUrl}/plugins/{model.StoreId}/aqua/samrockprotocol?setup={Uri.EscapeDataString(setupParams)}&otp={Uri.EscapeDataString(otp)}";
@@ -245,11 +242,14 @@ public class ImportWalletsViewModel
 {
     public string StoreId { get; set; }
 
-    [DisplayName("Bitcoin")] public bool BtcChain { get; set; }
+    [DisplayName("Bitcoin")]
+    public bool BtcChain { get; set; }
 
-    [DisplayName("Lightning")] public bool BtcLn { get; set; }
+    [DisplayName("Lightning")]
+    public bool BtcLn { get; set; }
 
-    [DisplayName("Liquid Bitcoin")] public bool LiquidChain { get; set; }
+    [DisplayName("Liquid Bitcoin")]
+    public bool LiquidChain { get; set; }
 
     public string QrCode { get; set; }
     public string Otp { get; set; }

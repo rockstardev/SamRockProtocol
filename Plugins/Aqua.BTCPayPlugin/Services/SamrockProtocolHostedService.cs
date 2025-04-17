@@ -72,11 +72,7 @@ public class SamrockProtocolHostedService(
     public void OtpUsed(string otp, bool importSuccessful)
     {
         if (_samrockImportDictionary.Remove(otp, out var value))
-            _samrockResults.Add(otp, new SamrockResult
-            {
-                ImportSuccessful = importSuccessful,
-                Expires = value.Expires
-            });
+            _samrockResults.Add(otp, new SamrockResult { ImportSuccessful = importSuccessful, Expires = value.Expires });
     }
 
     public bool? OtpStatus(string otp)
