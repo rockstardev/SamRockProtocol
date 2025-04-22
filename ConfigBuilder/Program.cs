@@ -32,4 +32,4 @@ var content = JsonSerializer.Serialize(new
 });
 
 Console.WriteLine(content);
-await File.WriteAllTextAsync("../../../../BTCPayServer/BTCPayServer/appsettings.dev.json", content);
+await File.WriteAllTextAsync("../../../../submodules/BTCPayServer/BTCPayServer/appsettings.dev.json", content);
