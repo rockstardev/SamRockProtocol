@@ -14,7 +14,7 @@ using NBitcoin.DataEncoders;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
-public class BoltzLightningClient : ILightningClient, IDisposable
+public partial class BoltzLightningClient : ILightningClient, IDisposable
 {
     private readonly ConcurrentDictionary<string, BoltzInvoiceListener> _activeListeners = new(); // Key: Swap ID
     private readonly HttpClient _httpClient;
@@ -66,38 +66,38 @@ public class BoltzLightningClient : ILightningClient, IDisposable
             throw new Exception("Invalid amount for CreateInvoice.");
         }
 
-        // 1. Generate Preimage and Hash
-        var preimage = RandomNumberGenerator.GetBytes(32);
-        var preimageHash = SHA256.HashData(preimage);
-        var preimageHashHex = Convert.ToHexString(preimageHash).ToLowerInvariant();
-
-        Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (L-BTC -> BTC)");
-        Logger.LogDebug($"Preimage Hash: {preimageHashHex}");
-
-        // 2. Get Liquid Address and Claim Key (Using placeholder for now)
-        var (claimAddress, claimKey) = GetLiquidDetailsForSwap();
-        if (string.IsNullOrEmpty(claimAddress) || claimKey == null)
-        {
-            Logger.LogError("Failed to get Liquid claim details.");
-            throw new Exception("Failed to obtain Liquid address or claim key for the swap.");
-        }
-
-        Logger.LogInformation($"Using Liquid Claim Address: {claimAddress}");
-
-        // 3. Call Boltz API to create reverse swap
-        var request = new CreateReverseSwapRequest
-        {
-            FromAsset = "BTC", // We receive BTC (Lightning)
-            ToAsset = _options.SwapToAsset, // We send L-BTC (on-chain)
-            InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
-            PreimageHash = preimageHashHex,
-            ClaimPublicKey = claimKey.PubKey.ToHex() // Provide the public key for the claim script
-            // Add Address for claim?
-            // Description? req.Description / req.DescriptionHash
-        };
-
         try
         {
+            // 1. Generate Preimage and Hash
+            var preimage = RandomNumberGenerator.GetBytes(32);
+            var preimageHash = SHA256.HashData(preimage);
+            var preimageHashHex = Convert.ToHexString(preimageHash).ToLowerInvariant();
+
+            Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (L-BTC -> BTC)");
+            Logger.LogDebug($"Preimage Hash: {preimageHashHex}");
+
+            // 2. Get Liquid Address and Claim Key (Using placeholder for now)
+            var (claimAddress, claimKey) = GetLiquidDetailsForSwap();
+            if (string.IsNullOrEmpty(claimAddress) || claimKey == null)
+            {
+                Logger.LogError("Failed to get Liquid claim details.");
+                throw new Exception("Failed to obtain Liquid address or claim key for the swap.");
+            }
+
+            Logger.LogInformation($"Using Liquid Claim Address: {claimAddress}");
+
+            // 3. Call Boltz API to create reverse swap
+            var request = new CreateReverseSwapRequest
+            {
+                FromAsset = "BTC", // We receive BTC (Lightning)
+                ToAsset = _options.SwapToAsset, // We send L-BTC (on-chain)
+                InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
+                PreimageHash = preimageHashHex,
+                ClaimPublicKey = claimKey.PubKey.ToHex() // Provide the public key for the claim script
+                // Add Address for claim?
+                // Description? req.Description / req.DescriptionHash
+            };
+
             Logger.LogDebug("Sending CreateReverseSwap request to Boltz API.");
             // Explicitly call the extension method to resolve ambiguity
             var response = await HttpClientJsonExtensions.PostAsJsonAsync(_httpClient, "/v2/swap/reverse", request, cancellationToken);
@@ -160,19 +160,6 @@ public class BoltzLightningClient : ILightningClient, IDisposable
         }
     }
 
-    public Task<ILightningInvoiceListener> Listen(CancellationToken cancellationToken = default)
-    {
-        Logger.LogError("General purpose listening (Listen without paymentHash) is not supported by BoltzLightningClient.");
-        return Task.FromException<ILightningInvoiceListener>(
-            new NotSupportedException("BoltzLightningClient does not support general purpose listening. Use Listen(paymentHash) after CreateInvoice."));
-    }
-
-    public Task<BitcoinAddress> GetDepositAddress(CancellationToken cancellationToken = default)
-    {
-        Logger.LogError("GetDepositAddress is not supported by BoltzLightningClient.");
-        return Task.FromException<BitcoinAddress>(new NotSupportedException("BoltzLightningClient does not provide a general deposit address."));
-    }
-
     public async Task CancelInvoice(string invoiceId, CancellationToken cancellationToken = default)
     {
         // In Boltz context, 'invoiceId' often corresponds to the 'swapId'.
@@ -211,109 +198,87 @@ public class BoltzLightningClient : ILightningClient, IDisposable
         await _webSocketService.UnsubscribeFromSwapAsync(swapId, cancellationToken);
     }
 
-    public Task<LightningNodeInformation> GetInfo(CancellationToken cancellationToken = default)
+    public Task<ILightningInvoiceListener> Listen(string paymentHash, CancellationToken cancellationToken = default)
     {
-        throw new NotSupportedException();
+        Logger.LogInformation($"Listen called for PaymentHash: {paymentHash}");
+
+        // Look up the swap ID associated with this payment hash
+        if (!_preimageHashToSwapId.TryGetValue(paymentHash.ToLowerInvariant(), out var swapId))
+        {
+            Logger.LogError($"Listen called for unknown paymentHash: {paymentHash}. Swap data may not exist yet or invoice creation failed.");
+            // Throw an exception as we cannot listen for an untracked swap
+            return Task.FromException<ILightningInvoiceListener>(
+                new InvalidOperationException($"Cannot listen for paymentHash {paymentHash}: Corresponding swap not found."));
+        }
+
+        Logger.LogDebug($"Found swapId {swapId} for paymentHash {paymentHash}. Checking for existing listener.");
+
+        // Check if a listener already exists for this swapId
+        if (_activeListeners.TryGetValue(swapId, out var existingListener))
+        {
+            Logger.LogInformation($"Returning existing listener for swap {swapId}");
+            return Task.FromResult<ILightningInvoiceListener>(existingListener);
+        }
+
+        // Create and register a new listener
+        var listener = new BoltzInvoiceListener(this, swapId, CleanupListenerResources, Logger, cancellationToken);
+
+        if (!_activeListeners.TryAdd(swapId, listener))
+        {
+            // This should theoretically not happen if the previous TryGetValue failed, but handle defensively
+            Logger.LogWarning($"Failed to add new listener for swap {swapId}, but it wasn't found previously. Attempting lookup again.");
+            if (_activeListeners.TryGetValue(swapId, out existingListener))
+            {
+                Logger.LogInformation($"Returning existing listener found on second attempt for swap {swapId}");
+                listener.Dispose(); // Dispose the newly created one
+                return Task.FromResult<ILightningInvoiceListener>(existingListener);
+            }
+
+            Logger.LogError($"Concurrency issue: Failed to add or retrieve listener for swap {swapId}.");
+            listener.Dispose();
+            return Task.FromException<ILightningInvoiceListener>(
+                new InvalidOperationException($"Failed to register listener for swap {swapId} due to unexpected concurrency state."));
+        }
+
+        Logger.LogInformation($"Created and registered new listener for swap {swapId} (PaymentHash: {paymentHash})");
+        return Task.FromResult<ILightningInvoiceListener>(listener);
     }
 
-    public Task<LightningNodeBalance> GetBalance(CancellationToken cancellationToken = default)
+    // Called by the listener itself via cleanup delegate
+    private void CleanupListenerResources(string swapId)
     {
-        // Boltz doesn't hold a balance for the user in the same way a node does.
-        Logger.LogDebug("GetBalance called on Boltz client - returning zero balance.");
-        return Task.FromResult(new LightningNodeBalance());
+        Logger.LogDebug($"Cleaning up resources for listener associated with swap {swapId}");
+        if (_activeListeners.TryRemove(swapId, out var listener))
+        {
+            Logger.LogDebug($"Removed listener for swap {swapId} from active dictionary.");
+            // Ensure listener's TaskCompletionSource is cancelled if not already done by Dispose
+            try
+            {
+                if (!listener._tcs.Task.IsCompleted) listener._tcs.TrySetCanceled();
+            }
+            catch (ObjectDisposedException)
+            {
+                /* Ignore if already disposed */
+            }
+        }
+        else
+        {
+            Logger.LogWarning($"Attempted to clean up resources for swap {swapId}, but listener was not found in active dictionary.");
+        }
+        // Note: Unsubscribing from WebSocket happens when swap status reaches a final state (paid/failed) or during CancelInvoice.
     }
 
-    public Task<PayResponse> Pay(string bolt11, CancellationToken cancellationToken = default)
+    // Temporary placeholder - replace with actual wallet integration
+    private (string address, Key claimKey) GetLiquidDetailsForSwap()
     {
-        return Pay(bolt11, null, cancellationToken);
-    }
+        // WARNING: Hardcoded keys and address for testing ONLY. DO NOT USE IN PRODUCTION.
 
-    public Task<PayResponse> Pay(PayInvoiceParams payParams, CancellationToken cancellationToken = default)
-    {
-        Logger.LogError("Pay (SendPayment) is not supported via Boltz reverse swaps.");
-        throw new NotImplementedException();
-    }
+        // Use a deterministic but unique key for testing if possible, otherwise random
+        // var privateKey = new Key(RandomNumberGenerator.GetBytes(32));
+        var privateKey = new Key(Encoders.Hex.DecodeData("a_very_secret_and_persistent_hex_private_key_for_testing"));
+        var pubKey = privateKey.PubKey;
 
-    public async Task<PayResponse> Pay(string bolt11, PayInvoiceParams? payParams = null, CancellationToken cancellationToken = default)
-    {
-        Logger.LogError("Pay (SendPayment) is not supported via Boltz reverse swaps.");
-        throw new NotImplementedException();
-    }
-
-    public Task<OpenChannelResponse> OpenChannel(OpenChannelRequest openChannelRequest, CancellationToken cancellationToken = default)
-    {
-        Logger.LogWarning("OpenChannel is not applicable to the Boltz client.");
-        throw new NotImplementedException();
-    }
-
-    // Updated return type to match interface
-    public Task<ConnectionResult> ConnectTo(NodeInfo nodeInfo, CancellationToken cancellationToken = default)
-    {
-        Logger.LogWarning("ConnectTo is not applicable to the Boltz client.");
-        // We connect to the Boltz API/WebSocket, not arbitrary nodes.
-        return Task.FromResult(ConnectionResult.Ok); // Or NotSupported?
-    }
-
-    public Task<LightningChannel[]> ListChannels(CancellationToken cancellationToken = default)
-    {
-        Logger.LogDebug("ListChannels called on Boltz client - returning empty list.");
-        // Boltz manages swaps, not persistent Lightning channels.
-        return Task.FromResult(Array.Empty<LightningChannel>());
-    }
-
-    public Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellationToken = default)
-    {
-        Logger.LogDebug($"GetInvoice called for: {invoiceId}");
-        // invoiceId for Boltz is the PaymentHash
-        if (_preimageHashToSwapId.TryGetValue(invoiceId, out var swapId) && _swapData.TryGetValue(swapId, out var swap))
-            return Task.FromResult(swap.OriginalInvoice);
-
-        Logger.LogWarning($"GetInvoice: Invoice/Swap not found for PaymentHash: {invoiceId}");
-        return Task.FromResult<LightningInvoice>(null!);
-    }
-
-    // Required by ILightningClient
-    public Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellationToken = default)
-    {
-        return GetInvoice(paymentHash.ToString(), cancellationToken);
-    }
-
-    public Task<LightningPayment> GetPayment(string paymentHash, CancellationToken cancellationToken = default)
-    {
-        Logger.LogWarning($"GetPayment({paymentHash}) not supported/implemented for Boltz client.");
-        // Payments are typically outgoing, which we don't support here.
-        return Task.FromResult<LightningPayment>(null!);
-    }
-
-    public Task<LightningInvoice[]> ListInvoices(CancellationToken cancellationToken = default)
-    {
-        Logger.LogDebug("ListInvoices called on Boltz client.");
-        var invoices = _swapData.Values.Select(s => s.OriginalInvoice).ToArray();
-        return Task.FromResult(invoices);
-    }
-
-    public Task<LightningInvoice[]> ListInvoices(ListInvoicesParams? request, CancellationToken cancellationToken = default)
-    {
-        Logger.LogDebug("ListInvoices (with params) called on Boltz client.");
-        // Basic filtering could be added here if needed (e.g., by pending/paid)
-        var query = _swapData.Values.Select(s => s.OriginalInvoice);
-        if (request != null)
-            if (request.PendingOnly == true)
-                query = query.Where(i => i.Status == LightningInvoiceStatus.Unpaid);
-        // Add other filters like index/offset if required by BTCPay
-        return Task.FromResult(query.ToArray());
-    }
-
-    public Task<LightningPayment[]> ListPayments(CancellationToken cancellationToken = default)
-    {
-        Logger.LogDebug("ListPayments called on Boltz client - returning empty list.");
-        return Task.FromResult(Array.Empty<LightningPayment>());
-    }
-
-    public Task<LightningPayment[]> ListPayments(ListPaymentsParams? request, CancellationToken cancellationToken = default)
-    {
-        Logger.LogDebug("ListPayments (with params) called on Boltz client - returning empty list.");
-        return Task.FromResult(Array.Empty<LightningPayment>());
+        return ("VJL9yJCQBqw9XyMduQmDfaVXLG8QP2iW6j1MwatE1dAwPPMNFozLJvfG3TCvxTzF6sTMsh2Vbj6272ck", privateKey);
     }
 
     // Callback from WebSocketService
@@ -380,89 +345,7 @@ public class BoltzLightningClient : ILightningClient, IDisposable
         return lowerStatus.Contains("fail") || lowerStatus.Contains("refund") || lowerStatus == "invoice.expired";
     }
 
-    public Task<ILightningInvoiceListener> Listen(string paymentHash, CancellationToken cancellationToken = default)
-    {
-        Logger.LogInformation($"Listen called for PaymentHash: {paymentHash}");
-
-        // Look up the swap ID associated with this payment hash
-        if (!_preimageHashToSwapId.TryGetValue(paymentHash.ToLowerInvariant(), out var swapId))
-        {
-            Logger.LogError($"Listen called for unknown paymentHash: {paymentHash}. Swap data may not exist yet or invoice creation failed.");
-            // Throw an exception as we cannot listen for an untracked swap
-            return Task.FromException<ILightningInvoiceListener>(
-                new InvalidOperationException($"Cannot listen for paymentHash {paymentHash}: Corresponding swap not found."));
-        }
-
-        Logger.LogDebug($"Found swapId {swapId} for paymentHash {paymentHash}. Checking for existing listener.");
-
-        // Check if a listener already exists for this swapId
-        if (_activeListeners.TryGetValue(swapId, out var existingListener))
-        {
-            Logger.LogInformation($"Returning existing listener for swap {swapId}");
-            return Task.FromResult<ILightningInvoiceListener>(existingListener);
-        }
-
-        // Create and register a new listener
-        var listener = new BoltzInvoiceListener(this, swapId, CleanupListenerResources, Logger, cancellationToken);
-
-        if (!_activeListeners.TryAdd(swapId, listener))
-        {
-            // This should theoretically not happen if the previous TryGetValue failed, but handle defensively
-            Logger.LogWarning($"Failed to add new listener for swap {swapId}, but it wasn't found previously. Attempting lookup again.");
-            if (_activeListeners.TryGetValue(swapId, out existingListener))
-            {
-                Logger.LogInformation($"Returning existing listener found on second attempt for swap {swapId}");
-                listener.Dispose(); // Dispose the newly created one
-                return Task.FromResult<ILightningInvoiceListener>(existingListener);
-            }
-
-            Logger.LogError($"Concurrency issue: Failed to add or retrieve listener for swap {swapId}.");
-            listener.Dispose();
-            return Task.FromException<ILightningInvoiceListener>(
-                new InvalidOperationException($"Failed to register listener for swap {swapId} due to unexpected concurrency state."));
-        }
-
-        Logger.LogInformation($"Created and registered new listener for swap {swapId} (PaymentHash: {paymentHash})");
-        return Task.FromResult<ILightningInvoiceListener>(listener);
-    }
-
-    // Temporary placeholder - replace with actual wallet integration
-    private (string address, Key claimKey) GetLiquidDetailsForSwap()
-    {
-        // WARNING: Hardcoded keys and address for testing ONLY. DO NOT USE IN PRODUCTION.
-
-        // Use a deterministic but unique key for testing if possible, otherwise random
-        // var privateKey = new Key(RandomNumberGenerator.GetBytes(32));
-        var privateKey = new Key(Encoders.Hex.DecodeData("a_very_secret_and_persistent_hex_private_key_for_testing"));
-        var pubKey = privateKey.PubKey;
-
-        return ("VJL9yJCQBqw9XyMduQmDfaVXLG8QP2iW6j1MwatE1dAwPPMNFozLJvfG3TCvxTzF6sTMsh2Vbj6272ck", privateKey);
-    }
-
-    // Called by the listener itself via cleanup delegate
-    private void CleanupListenerResources(string swapId)
-    {
-        Logger.LogDebug($"Cleaning up resources for listener associated with swap {swapId}");
-        if (_activeListeners.TryRemove(swapId, out var listener))
-        {
-            Logger.LogDebug($"Removed listener for swap {swapId} from active dictionary.");
-            // Ensure listener's TaskCompletionSource is cancelled if not already done by Dispose
-            try
-            {
-                if (!listener._tcs.Task.IsCompleted) listener._tcs.TrySetCanceled();
-            }
-            catch (ObjectDisposedException)
-            {
-                /* Ignore if already disposed */
-            }
-        }
-        else
-        {
-            Logger.LogWarning($"Attempted to clean up resources for swap {swapId}, but listener was not found in active dictionary.");
-        }
-        // Note: Unsubscribing from WebSocket happens when swap status reaches a final state (paid/failed) or during CancelInvoice.
-    }
-
+    // Internal data structure for holding swap details
     private class SwapData
     {
         public required string Id { get; init; }
