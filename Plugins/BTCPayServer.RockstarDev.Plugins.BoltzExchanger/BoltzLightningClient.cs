@@ -305,8 +305,8 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 // Use CancellationToken.None as this is a background task
                 await _webSocketService.UnsubscribeFromSwapAsync(swap.Id, CancellationToken.None);
 
-                // TODO: Trigger the Liquid claim transaction here!
-                Logger.LogWarning($"TODO: Implement Liquid claim transaction for swap {swap.Id}");
+                // RECEIVED PAYMENT, NOW CLAIMING
+                await ClaimLiquidFunds(swap);
             }
             else if (IsFailedStatus(update.Status))
             {
@@ -326,6 +326,62 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         {
             Logger.LogWarning($"Received status update for unknown or removed swap ID: {update.Id}");
         }
+    }
+
+    private async Task ClaimLiquidFunds(SwapData swap)
+    {
+        // TODO: Needs implementing, we don't have primitives for this in BTCPay
+        
+        // // Retrieve necessary data from stored SwapData
+        // var swapId = swap.Id;
+        // var preimage = swap.Preimage;
+        // var claimPrivateKey = swap.ClaimPrivateKey;
+        // var redeemScript = swap.SwapResponse.RedeemScript;
+        // var lockupAddress = swap.LockupAddress;
+        // var lockupTransactionId = swap.SwapResponse.LockupTransactionId;
+        // var lockupVout = swap.SwapResponse.LockupVout;
+        // var lockupAmount = swap.SwapResponse.LockupAmount;
+        // var assetId = swap.SwapResponse.AssetId;
+        // var destinationAddress = _options.SwapAddress;
+        // var network = _options.IsTestnet ? Network.LiquidTestnet : Network.Liquid;
+        //
+        // // Construct the Liquid Transaction (PSET)
+        // var psbt = new PSBT();
+        // psbt.Inputs.Add(new PSBTInput
+        // {
+        //     NonWitnessUtxo = new TxOut(lockupAmount, redeemScript),
+        //     WitnessUtxo = new TxOut(lockupAmount, redeemScript),
+        //     OutPoint = new OutPoint(lockupTransactionId, lockupVout),
+        //     RedeemScript = redeemScript,
+        //     SighashType = SigHash.All,
+        // });
+        //
+        // // Add the output
+        // var output = new TxOut(lockupAmount, destinationAddress);
+        // psbt.Outputs.Add(output);
+        //
+        // // Prepare for Taproot Script Path Signing
+        // var internalKey = claimPrivateKey.GetWif(network).GetAddress(network);
+        // var controlBlock = new byte[33 + 1 + redeemScript.Length];
+        // controlBlock[0] = (byte)(internalKey.IsCompressed ? 0x01 : 0x00);
+        // internalKey.GetPubKey().ToBytes(controlBlock, 1);
+        // redeemScript.ToBytes(controlBlock, 34);
+        //
+        // // Sign the PSET Input
+        // var signature = claimPrivateKey.Sign(preimage, SigHash.All, redeemScript, controlBlock);
+        // psbt.Inputs[0].FinalScriptWitness = new ScriptWitness(new[] { signature.ToDER() });
+        //
+        // // Finalize the PSET
+        // psbt.Finalize();
+        //
+        // // Extract the final, signed transaction
+        // var finalTx = psbt.ExtractTransaction();
+        //
+        // // Broadcast the Transaction
+        // var broadcastResponse = await _httpClient.PostAsJsonAsync("/api/tx", new { tx = finalTx.ToHex() });
+        // broadcastResponse.EnsureSuccessStatusCode();
+        //
+        // Logger.LogInformation($"Liquid claim transaction broadcasted for swap {swapId}. Transaction ID: {finalTx.GetHash().ToString()}");
     }
 
     private bool IsFailedStatus(string? status)
