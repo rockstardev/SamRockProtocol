@@ -55,7 +55,8 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     {
         Logger.LogInformation($"CreateInvoice called: Amount={amount}, Description='{description}', Expiry={expiry}");
         if (!string.IsNullOrEmpty(description)) Logger.LogWarning("Boltz CreateInvoice does not use the 'description' field.");
-        // if (expiry != TimeSpan.Zero && expiry != BoltzConstants.DefaultInvoiceExpiry) { // Assuming a default constant exists or comparing to a reasonable default
+        // if (expiry != TimeSpan.Zero && expiry != BoltzConstants.DefaultInvoiceExpiry) {
+        //  // Assuming a default constant exists or comparing to a reasonable default
         //     _logger.LogWarning($"Boltz CreateInvoice does not use the custom 'expiry' field. Using default Boltz expiry. Requested: {expiry}");
         // }
 
@@ -73,18 +74,13 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             var preimageHash = SHA256.HashData(preimage);
             var preimageHashHex = Convert.ToHexString(preimageHash).ToLowerInvariant();
 
-            Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (L-BTC -> BTC)");
+            Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (Lightning -> {_options.SwapToAsset})");
             Logger.LogDebug($"Preimage Hash: {preimageHashHex}");
 
-            // 2. Get Liquid Address and Claim Key (Using placeholder for now)
-            var (claimAddress, claimKey) = GetLiquidDetailsForSwap();
-            if (string.IsNullOrEmpty(claimAddress) || claimKey == null)
-            {
-                Logger.LogError("Failed to get Liquid claim details.");
-                throw new Exception("Failed to obtain Liquid address or claim key for the swap.");
-            }
-
-            Logger.LogInformation($"Using Liquid Claim Address: {claimAddress}");
+            // 2. Generate ephemeral key pair for this swap's claim mechanism
+            var claimPrivateKey = new Key();
+            var claimPublicKeyHex = claimPrivateKey.PubKey.ToHex();
+            Logger.LogDebug($"Using ephemeral Claim Public Key: {claimPublicKeyHex}");
 
             // 3. Call Boltz API to create reverse swap
             var request = new CreateReverseSwapRequest
@@ -93,17 +89,24 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 ToAsset = _options.SwapToAsset, // We send L-BTC (on-chain)
                 InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
                 PreimageHash = preimageHashHex,
-                ClaimPublicKey = claimKey.PubKey.ToHex() // Provide the public key for the claim script
+                ClaimPublicKey = claimPublicKeyHex // Provide the public key for the claim script
                 // Add Address for claim?
                 // Description? req.Description / req.DescriptionHash
             };
 
-            Logger.LogDebug("Sending CreateReverseSwap request to Boltz API.");
+            Logger.LogInformation($"Sending CreateReverseSwap request to Boltz API: {_httpClient.BaseAddress}v2/swap/reverse");
+            Logger.LogDebug(
+                $"CreateReverseSwap Request Payload: From={request.FromAsset}, To={request.ToAsset}, Amount={request.InvoiceAmountSat}, PreimageHash={request.PreimageHash}, ClaimPubKey={request.ClaimPublicKey}");
+            Logger.LogDebug($"Cancellation Token Status Before Call: IsCancellationRequested={cancellationToken.IsCancellationRequested}");
+
             // Explicitly call the extension method to resolve ambiguity
-            var response = await HttpClientJsonExtensions.PostAsJsonAsync(_httpClient, "/v2/swap/reverse", request, cancellationToken);
+            var cancellationTokenDebug = new CancellationToken(false);
+            //cancellationTokenDebug = cancellationToken;
+
+            var response = await HttpClientJsonExtensions.PostAsJsonAsync(_httpClient, "/v2/swap/reverse", request, cancellationTokenDebug);
             response.EnsureSuccessStatusCode();
 
-            var swapResponse = await response.Content.ReadFromJsonAsync<CreateReverseSwapResponse>(cancellationToken);
+            var swapResponse = await response.Content.ReadFromJsonAsync<CreateReverseSwapResponse>(cancellationTokenDebug);
 
             if (swapResponse == null || string.IsNullOrEmpty(swapResponse.Id) || string.IsNullOrEmpty(swapResponse.Invoice))
             {
@@ -131,11 +134,13 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             var newSwap = new SwapData
             {
                 Id = swapResponse.Id,
+                Preimage = preimage, // Store the actual preimage bytes
                 PreimageHash = preimageHashHex,
-                Preimage = preimage, // Store the actual preimage
-                ClaimKey = claimKey,
-                ClaimAddress = claimAddress,
                 OriginalInvoice = invoice, // Store our constructed invoice
+                ClaimPrivateKey = claimPrivateKey, // Store the generated private key
+                RefundPublicKey = swapResponse.RefundPublicKey,
+                LockupAddress = swapResponse.LockupAddress,
+                BlindingKey = swapResponse.BlindingKey,
                 SwapResponse = swapResponse,
                 IsPaid = false
             };
@@ -144,7 +149,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             _preimageHashToSwapId.TryAdd(preimageHashHex, swapResponse.Id);
 
             // Subscribe via WebSocket
-            await _webSocketService.SubscribeToSwapAsync(swapResponse.Id, _options.ApiUrl, HandleSwapUpdate, cancellationToken);
+            await _webSocketService.SubscribeToSwapAsync(swapResponse.Id, _options.ApiUrl, HandleSwapUpdate, cancellationTokenDebug);
 
             return invoice;
         }
@@ -268,20 +273,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         // Note: Unsubscribing from WebSocket happens when swap status reaches a final state (paid/failed) or during CancelInvoice.
     }
 
-    // Temporary placeholder - replace with actual wallet integration
-    private (string address, Key claimKey) GetLiquidDetailsForSwap()
-    {
-        // WARNING: Hardcoded keys and address for testing ONLY. DO NOT USE IN PRODUCTION.
-
-        // Use a deterministic but unique key for testing if possible, otherwise random
-        // var privateKey = new Key(RandomNumberGenerator.GetBytes(32));
-        var privateKey = new Key(Encoders.Hex.DecodeData("a_very_secret_and_persistent_hex_private_key_for_testing"));
-        var pubKey = privateKey.PubKey;
-
-        return ("VJL9yJCQBqw9XyMduQmDfaVXLG8QP2iW6j1MwatE1dAwPPMNFozLJvfG3TCvxTzF6sTMsh2Vbj6272ck", privateKey);
-    }
-
-    // Callback from WebSocketService
     private async Task HandleSwapUpdate(SwapStatusUpdate update)
     {
         Logger.LogInformation($"Handling status update for swap {update.Id}: {update.Status}");
@@ -349,11 +340,13 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     private class SwapData
     {
         public required string Id { get; init; }
+        public required byte[] Preimage { get; init; } // Store the preimage
         public required string PreimageHash { get; init; }
-        public required byte[] Preimage { get; init; }
-        public required Key ClaimKey { get; init; }
-        public required string ClaimAddress { get; init; } // L-BTC address
-        public required LightningInvoice OriginalInvoice { get; set; } // Store the invoice BOLT11
+        public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
+        public required Key ClaimPrivateKey { get; init; } // Store the private key needed for claiming
+        public required string RefundPublicKey { get; init; }
+        public required string LockupAddress { get; init; }
+        public required string BlindingKey { get; init; }
         public CreateReverseSwapResponse? SwapResponse { get; set; }
         public SwapStatusUpdate? LastStatusUpdate { get; set; }
         public bool IsPaid { get; set; } // Flag indicating if listener was notified
