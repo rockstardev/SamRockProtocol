@@ -74,7 +74,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             var preimageHash = SHA256.HashData(preimage);
             var preimageHashHex = Convert.ToHexString(preimageHash).ToLowerInvariant();
 
-            Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (Lightning -> {_options.SwapToAsset})");
+            Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (Lightning -> {_options.SwapTo})");
             Logger.LogDebug($"Preimage Hash: {preimageHashHex}");
 
             // 2. Generate ephemeral key pair for this swap's claim mechanism
@@ -86,7 +86,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             var request = new CreateReverseSwapRequest
             {
                 FromAsset = "BTC", // We receive BTC (Lightning)
-                ToAsset = _options.SwapToAsset, // We send L-BTC (on-chain)
+                ToAsset = _options.SwapTo, // We send L-BTC (on-chain)
                 InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
                 PreimageHash = preimageHashHex,
                 ClaimPublicKey = claimPublicKeyHex // Provide the public key for the claim script

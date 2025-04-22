@@ -66,7 +66,34 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
             swapToAsset = "L-BTC"; // Assuming default for now
         // error = "Missing 'swap-to' parameter.";
         // return false;
-        var options = new BoltzOptions { ApiUrl = apiUrl, SwapToAsset = swapToAsset };
+
+        // --- New: Parse and Validate Destination Address ---
+        if (!kv.TryGetValue("swap-address", out var swapAddress) || string.IsNullOrWhiteSpace(swapAddress))
+        {
+            error = "The key 'swap-address' is missing or empty in the connection string.";
+            return null;
+        }
+
+        // try
+        // {
+        //     // Basic validation: Check if it's a valid BitcoinAddress for the target network
+        //     // Note: This doesn't guarantee it's a *Liquid* address specifically, 
+        //     // but it's a good first step. More robust validation might be needed.
+        //     BitcoinAddress.Create(destinationAddressStr, network);
+        //     // TODO: Add specific check for Liquid address format if NBitcoin supports it easily.
+        // }
+        // catch (FormatException)
+        // {
+        //     error = $"'swap-address' ('{destinationAddressStr}') is not a valid address format for the network '{network.Name}'.";
+        //     return null;
+        // }
+
+        var options = new BoltzOptions
+        {
+            ApiUrl = apiUrl,
+            SwapTo = swapToAsset, // Assuming BTC Lightning is what user receives
+            SwapAddress = swapAddress, // Store the validated address
+        };
 
         // Create HttpClient instance
         var httpClient = _httpClientFactory.CreateClient(nameof(BoltzLightningClient)); 

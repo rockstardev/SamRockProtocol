@@ -5,14 +5,6 @@ using System.Text.Json.Serialization;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
-// Options parsed from connection string
-public class BoltzOptions
-{
-    public required Uri ApiUrl { get; set; }
-    public required string SwapToAsset { get; set; } // e.g., "L-BTC"
-    public bool IsTestnet => ApiUrl?.ToString().Contains(".testnet.") ?? false;
-}
-
 // --- Request DTOs ---
 
 public class CreateReverseSwapRequest
