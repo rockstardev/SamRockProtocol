@@ -1,54 +1,39 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Configuration;
-using BTCPayServer.Lightning;
-using BTCPayServer.Lightning.CLightning;
-using BTCPayServer.Lightning.LND;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Org.BouncyCastle.Bcpg.OpenPgp;
-
-// Added for convenience
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
 {
-    public class CovClaimDaemon(
-        IOptions<DataDirectories> dataDirectories,
-        ILogger<CovClaimDaemon> logger,
-        ILogger<CovClaimDaemonRestClient> clientLogger,
-        BTCPayNetworkProvider btcPayNetworkProvider,
-        IHttpClientFactory httpClientFactory)
+    public class CovClaimDaemon : IHostedService, IDisposable
     {
-        private static readonly Version ClientVersion = new("0.0.1");
+        // Dependencies
+        private readonly ILogger<CovClaimDaemon> _logger;
+        private readonly IOptions<DataDirectories> _dataDirectories;
+        private readonly IHttpClientFactory _httpClientFactory; // For downloading
 
-        private Stream? _downloadStream;
-        private Task? _startTask;
-        private CancellationTokenSource? _daemonCancel;
-        private Task? _daemonTask;
-        private readonly List<string> _output = new();
-        private readonly HttpClient _httpClient = new();
-        private const int MaxLogLines = 150;
-        private string DataDir => Path.Combine(dataDirectories.Value.DataDir, "Plugins", "CovClaim");
-        private string DaemonBinary => Path.Combine(DataDir, "bin", $"windows_{Architecture}", "covclaim.exe");
-        private string ConfigFile => Path.Combine(DataDir, ".env");
-        private readonly SemaphoreSlim _configSemaphore = new(1, 1);
-        public bool Starting => _startTask is not null && !_startTask.IsCompleted;
+        // Process Management
+        private Process? _process;
+        private CancellationTokenSource? _stopCts;
+        private readonly TaskCompletionSource<bool> _daemonReadyTcs = new(); // Signals when the daemon API is likely ready
 
-        public readonly TaskCompletionSource<bool> InitialStart = new();
-        public CovClaimDaemonRestClient? AdminClient { get; private set; }
-
-        public string? Error { get; private set; }
-        public string RecentOutput => string.Join("\n", _output);
+        // Configuration & Paths
+        private const string RequiredVersion = "0.0.1"; // Define the version we want to download
+        private string DataDir => Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "CovClaim");
+        private string BinDir => Path.Combine(DataDir, "bin", $"windows_{Architecture}");
+        private string DaemonBinary => Path.Combine(BinDir, "covclaim.exe");
+        private string ConfigFile => Path.Combine(DataDir, ".env"); // Daemon expects config in its working dir
 
         private string Architecture => RuntimeInformation.OSArchitecture switch
         {
@@ -57,371 +42,297 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
             _ => throw new NotSupportedException("Unsupported architecture")
         };
 
-        public async Task Wait(CancellationToken cancellationToken)
+        // State
+        public bool IsReady => _daemonReadyTcs.Task.IsCompletedSuccessfully && _daemonReadyTcs.Task.Result;
+        public Task DaemonReadyTask => _daemonReadyTcs.Task;
+
+        public CovClaimDaemon(
+            ILogger<CovClaimDaemon> logger,
+            IOptions<DataDirectories> dataDirectories,
+            IHttpClientFactory httpClientFactory)
         {
-            // this waited on lnd & boltz client, we can initialize right away
-            while (true)
-            {
-                var client = new CovClaimDaemonRestClient(clientLogger, httpClientFactory);
-
-                try
-                {
-                    //await client.GetInfo(cancellationToken);
-                    logger.LogInformation("Client created");
-                    AdminClient = client;
-                    Error = null;
-                    return;
-                }
-                catch (Exception e)
-                {
-                    // if (!cancellationToken.IsCancellationRequested)
-                    // {
-                    //     latestError = e.Status.Detail;
-                    // }
-
-                    await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
-                }
-            }
-
-            await Stop();
+            _logger = logger;
+            _dataDirectories = dataDirectories;
+            _httpClientFactory = httpClientFactory;
         }
 
-        public async Task Download(Version version)
+        // --- IHostedService Implementation ---
+
+        public async Task StartAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Starting CovClaimDaemon Hosted Service...");
+            _stopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            try
+            {
+                // Ensure data directories exist
+                Directory.CreateDirectory(DataDir);
+                Directory.CreateDirectory(BinDir);
+
+                // 1. Check/Download Executable
+                if (!File.Exists(DaemonBinary))
+                {
+                    _logger.LogInformation("CovClaimDaemon executable not found at {DaemonBinary}. Attempting download...", DaemonBinary);
+                    await DownloadBinaryAsync(RequiredVersion, _stopCts.Token);
+                }
+                // TODO: Add version check here if needed
+
+                // 2. Check/Create .env file
+                if (!File.Exists(ConfigFile))
+                {
+                    _logger.LogInformation("CovClaimDaemon .env file not found at {ConfigFile}. Creating default...", ConfigFile);
+                    await CreateConfigFileAsync(_stopCts.Token);
+                }
+
+                // 3. Start the process
+                _logger.LogInformation("Attempting to start CovClaimDaemon process from {DaemonBinary}...", DaemonBinary);
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = DaemonBinary,
+                    // Arguments = BuildArguments(), // Use .env file instead for this daemon
+                    WorkingDirectory = DataDir, // Daemon expects .env in its working directory
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8, // Ensure correct encoding
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+
+                _process = new Process { StartInfo = startInfo };
+
+                _process.OutputDataReceived += Process_OutputDataReceived;
+                _process.ErrorDataReceived += Process_ErrorDataReceived;
+
+                _process.Start();
+                _process.BeginOutputReadLine();
+                _process.BeginErrorReadLine();
+
+                _logger.LogInformation("CovClaimDaemon process started (PID: {PID}). Waiting for readiness signal...", _process.Id);
+
+                // Handle process exit
+                _ = Task.Run(async () =>
+                {
+                    await _process.WaitForExitAsync(_stopCts.Token);
+                    _logger.LogWarning("CovClaimDaemon process exited (PID: {PID}, Exit Code: {ExitCode}).", _process.Id, _process.ExitCode);
+                    _daemonReadyTcs.TrySetResult(false); // Mark as not ready if process exits unexpectedly
+                    // Optionally attempt restart here? For now, just log.
+                }, _stopCts.Token);
+
+
+                // Optional: Add a timeout for readiness check, similar to previous implementation
+                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(30), _stopCts.Token);
+                var completedTask = await Task.WhenAny(_daemonReadyTcs.Task, timeoutTask);
+
+                if (completedTask == timeoutTask && !_daemonReadyTcs.Task.IsCompleted)
+                {
+                    _logger.LogWarning(
+                        "CovClaimDaemon did not signal readiness within the timeout period. Assuming ready or attempting API ping might be needed elsewhere.");
+                    // We can still proceed, but readiness is uncertain. Let's tentatively set it ready.
+                    _daemonReadyTcs.TrySetResult(true);
+                }
+                else if (_daemonReadyTcs.Task.IsFaulted)
+                {
+                    _logger.LogError("CovClaimDaemon failed to become ready.", _daemonReadyTcs.Task.Exception);
+                    // Propagate the exception or handle it
+                    await _daemonReadyTcs.Task; // Re-throws the exception captured by the TCS
+                }
+                else
+                {
+                    _logger.LogInformation("CovClaimDaemon signaled readiness.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to start CovClaimDaemon.");
+                _daemonReadyTcs.TrySetException(ex); // Signal failure
+                DisposeProcess(); // Clean up if start fails critically
+                throw; // Re-throw to indicate service startup failure
+            }
+        }
+
+        public async Task StopAsync(CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("Stopping CovClaimDaemon Hosted Service...");
+            _stopCts?.Cancel();
+
+            if (_process != null && !_process.HasExited)
+            {
+                try
+                {
+                    _logger.LogInformation("Attempting to stop CovClaimDaemon process (PID: {PID})...", _process.Id);
+
+                    // Give it a moment to shut down gracefully after cancellation signal (if it supports it)
+                    // bool exited = await _process.WaitForExitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+                    // if (exited)
+                    // {
+                    //      _logger.LogInformation("CovClaimDaemon process exited gracefully.");
+                    // }
+                    // else
+                    //{
+                    _logger.LogInformation("Forcing CovClaimDaemon process kill (PID: {PID})...", _process.Id);
+                    _process.Kill(entireProcessTree: true); // Kill the process and any children
+                    await _process.WaitForExitAsync(cancellationToken); // Wait for confirmation
+                    _logger.LogInformation("CovClaimDaemon process stopped forcefully.");
+                    //}
+                }
+                catch (Exception ex) when (ex is InvalidOperationException || ex is NotSupportedException)
+                {
+                    _logger.LogWarning("Could not stop or kill CovClaimDaemon process (it might have already exited).");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error occurred while stopping CovClaimDaemon process.");
+                }
+            }
+            else
+            {
+                _logger.LogInformation("CovClaimDaemon process was not running or already exited.");
+            }
+
+            DisposeProcess(); // Ensure cleanup
+            _logger.LogInformation("CovClaimDaemon Hosted Service stopped.");
+        }
+
+        // --- Process Output Handlers ---
+
+        private void Process_OutputDataReceived(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null)
+            {
+                _logger.LogInformation("[covclaimd STDOUT] {Data}", e.Data); // Log as STDOUT
+                CheckForReadinessSignal(e.Data);
+            }
+        }
+
+        private void Process_ErrorDataReceived(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data != null)
+            {
+                // Log stderr messages as Information or Warning, not Error by default
+                _logger.LogInformation("[covclaimd STDERR] {Data}", e.Data); // Log as STDERR (use LogWarning if preferred)
+
+                CheckForReadinessSignal(e.Data);
+            }
+        }
+
+        // Helper method to check for readiness signal in log lines
+        private void CheckForReadinessSignal(string logLine)
+        {
+             // Adjust this string based on the *actual* output of your covclaim daemon
+             // Example: "Started API server on: 127.0.0.1:1234"
+             if (logLine.Contains("Started API server on", StringComparison.OrdinalIgnoreCase))
+             {
+                 if (!_daemonReadyTcs.Task.IsCompleted) // Avoid logging multiple times if signal appears in both streams
+                 {
+                     _logger.LogInformation("CovClaimDaemon REST API detected as ready.");
+                 }
+                 _daemonReadyTcs.TrySetResult(true); // OK to call multiple times
+             }
+             // Add checks for specific FATAL error messages here if needed to fail the TCS
+             // else if (logLine.Contains("CRITICAL ERROR PATTERN", StringComparison.OrdinalIgnoreCase))
+             // {
+             //     _daemonReadyTcs.TrySetException(new Exception($"CovClaimDaemon critical error: {logLine}"));
+             // }
+        }
+
+        // --- Helper Methods ---
+
+        private async Task DownloadBinaryAsync(string version, CancellationToken cancellationToken)
         {
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                throw new NotSupportedException("Only windows is supported");
+                throw new NotSupportedException("Automatic download only supported on Windows.");
             }
 
-            logger.LogInformation($"Downloading covclaim");
-
+            var client = _httpClientFactory.CreateClient("CovClaimDownload");
+            var releaseBaseUrl = $"https://github.com/rockstardev/Aqua.BTCPayPlugin/releases/download/v{version}/";
             string archiveName = $"covclaim-windows-{Architecture}-v{version}.tar.gz";
-            await using var s = await _httpClient.GetStreamAsync(ReleaseUrl(version) + archiveName);
+            var downloadUrl = releaseBaseUrl + archiveName;
+            //downloadUrl = "https://github.com/BoltzExchange/boltz-client/releases/download/v2.5.1/boltz-client-linux-amd64-v2.5.1.tar.gz";
 
-            _downloadStream = s;
-            await using var gzip = new GZipStream(s, CompressionMode.Decompress);
-            await TarFile.ExtractToDirectoryAsync(gzip, DataDir, true);
-            _downloadStream = null;
-
-            //await CheckBinaries(version);
-        }
-
-        private string ReleaseUrl(Version version)
-        {
-            return $"https://github.com/rockstardev/Aqua.BTCPayPlugin/releases/download/v{version}/";
-        }
-
-        private async Task<Stream> DownloadFile(string uri, string destination)
-        {
-            string path = Path.Combine(DataDir, destination);
-            if (!File.Exists(path))
-            {
-                await using var s = await _httpClient.GetStreamAsync(uri);
-                await using var fs = new FileStream(path, FileMode.Create);
-                await s.CopyToAsync(fs);
-            }
-
-            return File.OpenRead(path);
-        }
-
-        // private async Task CheckBinaries(Version version)
-        // {
-        //     string releaseUrl = ReleaseUrl(version);
-        //     string manifestName = $"boltz-client-manifest-v{version}.txt";
-        //     string sigName = $"boltz-client-manifest-v{version}.txt.sig";
-        //     string pubKey = "boltz.asc";
-        //     string pubKeyUrl = "https://canary.boltz.exchange/pgp.asc";
-        //
-        //     await using var sigStream = await DownloadFile(releaseUrl + sigName, sigName);
-        //     await using var pubKeyStream = await DownloadFile(pubKeyUrl, pubKey);
-        //
-        //     var keyRing = new PgpPublicKeyRing(PgpUtilities.GetDecoderStream(pubKeyStream));
-        //     var pgpFactory = new PgpObjectFactory(PgpUtilities.GetDecoderStream(sigStream));
-        //     PgpSignatureList sigList = (PgpSignatureList)pgpFactory.NextPgpObject();
-        //     PgpSignature sig = sigList[0];
-        //
-        //     var manifest = await _httpClient.GetByteArrayAsync(releaseUrl + manifestName);
-        //     string manifestPath = Path.Combine(DataDir, manifestName);
-        //     await File.WriteAllBytesAsync(manifestPath, manifest);
-        //     PgpPublicKey publicKey = keyRing.GetPublicKey(sig.KeyId);
-        //     sig.InitVerify(publicKey);
-        //     sig.Update(manifest);
-        //     if (!sig.Verify())
-        //     {
-        //         throw new Exception("Signature verification failed.");
-        //     }
-        //
-        //     CheckShaSums(DaemonBinary, manifestPath);
-        //     CheckShaSums(DaemonCli, manifestPath);
-        // }
-        //
-        // private void CheckShaSums(string fileToCheck, string manifestFile)
-        // {
-        //     // Compute the SHA256 hash of the file
-        //     using var sha256 = SHA256.Create();
-        //     using var stream = File.OpenRead(fileToCheck);
-        //     byte[] hashBytes = sha256.ComputeHash(stream);
-        //     string computedHash = BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
-        //
-        //     foreach (var line in File.ReadLines(manifestFile))
-        //     {
-        //         var split = line.Split();
-        //         if (fileToCheck.Contains(split.Last()))
-        //         {
-        //             var expectedHash = split.First();
-        //             if (computedHash == expectedHash)
-        //             {
-        //                 return;
-        //             }
-        //
-        //             throw new Exception("SHA256 hash mismatch");
-        //         }
-        //     }
-        //
-        //     throw new Exception("File not found in manifest");
-        // }
-
-        public double DownloadProgress()
-        {
-            if (_downloadStream is null)
-            {
-                return 0;
-            }
-
-            return 100 * (double)_downloadStream.Position / _downloadStream.Length;
-        }
-
-
-        private async Task Configure()
-        {
-            try
-            {
-                await _configSemaphore.WaitAsync();
-
-                if (!Path.Exists(ConfigFile))
-                {
-                    await File.WriteAllTextAsync(ConfigFile, envFileTemplate);
-                }
-
-                await Start(true);
-            }
-            catch (Exception e)
-            {
-                Error = e.Message;
-            }
-            finally
-            {
-                InitialStart.TrySetResult(true);
-                _configSemaphore.Release();
-            }
-        }
-
-        public async Task Init()
-        {
-            logger.LogDebug("Initializing");
-            try
-            {
-                if (!Directory.Exists(DataDir))
-                {
-                    Directory.CreateDirectory(DataDir);
-                }
-
-                string? currentVersion = null;
-                if (Path.Exists(DaemonBinary))
-                {
-                    var (code, stdout, _) = await RunCommand(DaemonBinary, "--version");
-                    if (code != 0)
-                    {
-                        logger.LogInformation($"Failed to get current client version: {stdout}");
-                    }
-                    else
-                    {
-                        currentVersion = stdout.Split("\n").First().Split("-").First().TrimStart('v');
-                    }
-                }
-
-                Version.TryParse(currentVersion, out var current);
-                if (current == null || current.CompareTo(ClientVersion) < 0)
-                {
-                    if (current != null)
-                    {
-                        logger.LogInformation("Client version outdated");
-                    }
-
-                    await Download(ClientVersion);
-                }
-            }
-            catch (Exception e)
-            {
-                Error = e.Message;
-                logger.LogError(e, "Failed to initialize");
-            }
-        }
-
-        private async Task Run(CancellationTokenSource daemonCancel, bool logOutput)
-        {
-            _output.Clear();
-            using var process = NewProcess(DaemonBinary, $"--datadir {DataDir}");
-            try
-            {
-                process.Start();
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e, "Failed to start client process");
-                Error = $"Failed to start process {e.Message}";
-                return;
-            }
-
-            MonitorStream(process.StandardOutput, daemonCancel.Token);
-            MonitorStream(process.StandardError, daemonCancel.Token, true);
+            _logger.LogInformation("Downloading CovClaimDaemon ({Version}) from {DownloadUrl}...", version, downloadUrl);
 
             try
             {
-                await process.WaitForExitAsync(daemonCancel.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                process.Kill();
-                await process.WaitForExitAsync();
-            }
-            finally
-            {
-                var wasRunning = true;
-                AdminClient = null;
+                using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                response.EnsureSuccessStatusCode();
 
-                if (process.ExitCode != 0)
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                await using var gzip = new GZipStream(stream, CompressionMode.Decompress);
+
+                // Extract directly to the final bin directory
+                _logger.LogInformation("Extracting {ArchiveName} to {BinDir}...", archiveName, BinDir);
+                await TarFile.ExtractToDirectoryAsync(gzip, BinDir, true);
+
+                // Check if the executable exists after extraction
+                if (!File.Exists(DaemonBinary))
                 {
-                    if (logOutput || wasRunning)
-                    {
-                        Error = $"Process exited with code {process.ExitCode}";
-                        logger.LogError(Error);
-
-                        logger.LogInformation(RecentOutput);
-                    }
-
-                    if (wasRunning && !daemonCancel.IsCancellationRequested)
-                    {
-                        logger.LogInformation("Restarting in 10 seconds");
-                        await Task.Delay(10000, daemonCancel.Token);
-                        InitiateStart();
-                    }
-                }
-            }
-        }
-
-        private async Task Start(bool logOutput = true)
-        {
-            await Stop();
-            logger.LogInformation("Starting client process");
-            var daemonCancel = new CancellationTokenSource();
-            _daemonTask = Run(daemonCancel, logOutput);
-            var wait = CancellationTokenSource.CreateLinkedTokenSource(daemonCancel.Token);
-            wait.CancelAfter(TimeSpan.FromSeconds(60));
-            _daemonCancel = daemonCancel;
-            await Wait(wait.Token);
-            // if (Running)
-            // {
-            //     AdminClient!.SwapUpdate += SwapUpdate!;
-            // }
-        }
-
-        public void InitiateStart()
-        {
-            if (!Starting)
-            {
-                _startTask = Start();
-            }
-        }
-
-        public async Task Stop()
-        {
-            if (_daemonTask is not null && !_daemonTask.IsCompleted)
-            {
-                var source = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                if (AdminClient is not null)
-                {
-                    try
-                    {
-                        logger.LogInformation("Stopping gracefully");
-                        //await AdminClient.Stop(source.Token);
-                    }
-                    catch (Exception)
-                    {
-                        logger.LogInformation("Graceful stop timed out, killing client process");
-                        logger.LogInformation(RecentOutput);
-                        if (_daemonCancel is not null)
-                        {
-                            await _daemonCancel.CancelAsync();
-                        }
-                    }
-                }
-                else if (_daemonCancel is not null)
-                {
-                    await _daemonCancel.CancelAsync();
+                    throw new FileNotFoundException($"Executable {DaemonBinary} not found after extraction from {archiveName}.");
                 }
 
-                await _daemonTask.WaitAsync(CancellationToken.None);
-                logger.LogInformation("Stopped");
+                _logger.LogInformation("CovClaimDaemon binary downloaded and extracted successfully.");
+
+                // Make executable (Linux/macOS only - not needed for Windows .exe)
+                // if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                // {
+                //     File.SetUnixFileMode(DaemonBinary, UnixFileMode.UserExecute | UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                // }
             }
-
-            // make sure to clear any leftover channels
-            // BoltzClient.Clear();
-        }
-
-        private Process NewProcess(string fileName, string args)
-        {
-            var processStartInfo = new ProcessStartInfo
+            catch (Exception ex)
             {
-                FileName = fileName,
-                Arguments = args,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-            };
-            //processStartInfo.EnvironmentVariables.Add("GRPC_GO_LOG_VERBOSITY_LEVEL", "99");
-            //processStartInfo.EnvironmentVariables.Add("GRPC_GO_LOG_SEVERITY_LEVEL", "info");
-            return new Process { StartInfo = processStartInfo };
+                _logger.LogError(ex, "Failed to download or extract CovClaimDaemon.");
+                throw; // Re-throw to prevent startup if download fails
+            }
         }
 
-        async Task<(int, string, string)> RunCommand(string fileName, string args,
-            CancellationToken cancellationToken = default)
+        private async Task CreateConfigFileAsync(CancellationToken cancellationToken)
         {
-            using Process process = NewProcess(fileName, args);
-            process.Start();
-            await process.WaitForExitAsync(cancellationToken);
-            var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-            return (process.ExitCode, stdout, stderr);
-        }
-
-        private void MonitorStream(StreamReader streamReader, CancellationToken cancellationToken, bool logAll = false)
-        {
-            Task.Factory.StartNew(async () =>
+            try
             {
-                while (!streamReader.EndOfStream)
+                // Ensure the directory exists
+                Directory.CreateDirectory(DataDir);
+                await File.WriteAllTextAsync(ConfigFile, EnvFileTemplate, Encoding.UTF8, cancellationToken);
+                _logger.LogInformation("Created default .env file at {ConfigFile}", ConfigFile);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to create default .env file at {ConfigFile}.", ConfigFile);
+                throw; // Re-throw to prevent startup if config creation fails
+            }
+        }
+
+        // --- Cleanup ---
+
+        private void DisposeProcess()
+        {
+            if (_process != null)
+            {
+                try
                 {
-                    var line = await streamReader.ReadLineAsync(cancellationToken);
-                    if (line != null)
-                    {
-                        {
-                            if (line.Contains("ERROR") || line.Contains("WARN"))
-                            {
-                                logger.LogWarning(line);
-                            }
-
-                            if (_output.Count >= MaxLogLines && !logAll)
-                            {
-                                _output.RemoveAt(0);
-                            }
-
-                            _output.Add(line);
-                        }
-                    }
+                    // Detach handlers to prevent issues during disposal
+                    _process.OutputDataReceived -= Process_OutputDataReceived;
+                    _process.ErrorDataReceived -= Process_ErrorDataReceived;
                 }
-            }, cancellationToken);
+                catch { } // Ignore errors detaching
+
+                _process.Dispose();
+                _process = null;
+                _logger.LogDebug("CovClaimDaemon process object disposed.");
+            }
         }
-    
-        private static string envFileTemplate = @"
+
+        public void Dispose()
+        {
+            _logger.LogDebug("Disposing CovClaimDaemon hosted service.");
+            DisposeProcess();
+            _stopCts?.Dispose();
+            // _httpClient is disposed by the factory if created via factory, otherwise manage here
+        }
+
+        // --- .env Template ---
+        // Minimal template - users MUST configure this properly, especially RPC details
+        private static readonly string EnvFileTemplate = @"
 RUST_LOG=trace,hyper=info,tracing=info,reqwest=info
 
 # The database that should be used
@@ -441,7 +352,7 @@ NETWORK=mainnet
 
 # Rest API configuration
 API_HOST=127.0.0.1
-API_PORT=1234
+API_PORT=35791
 
 # Chain backend to use
 # Options:
@@ -458,7 +369,7 @@ ELEMENTS_COOKIE=/home/michael/Git/TypeScript/boltz-backend/docker/regtest/data/c
 ESPLORA_ENDPOINT=https://blockstream.info/liquid/api
 
 # Poll interval for new blocks in seconds
-ESPLORA_POLL_INTERVAL=5
+ESPLORA_POLL_INTERVAL=10
 
 # Max reqs/second for the Esplora endpoint; useful when hitting rate limits
 # Set to 0 to disable
@@ -466,6 +377,7 @@ ESPLORA_MAX_REQUESTS_PER_SECOND=4
 
 # Used in combination with the Esplora backend to broadcast lowball transactions
 # Set to empty string to disable
-BOLTZ_ENDPOINT=https://api.boltz.exchange/v2";
+BOLTZ_ENDPOINT=https://api.boltz.exchange/v2
+";
     }
 }

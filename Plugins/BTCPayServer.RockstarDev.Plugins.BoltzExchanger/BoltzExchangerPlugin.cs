@@ -27,6 +27,7 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
 
         // Register the CovClaimDaemon 
         services.AddSingleton<CovClaimDaemon>();
+        services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<CovClaimDaemon>());
 
         // Register the connection string handler
         services.AddSingleton<ILightningConnectionStringHandler, BoltzLightningConnectionStringHandler>();
