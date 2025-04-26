@@ -9,11 +9,17 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 public class CreateReverseSwapRequest
 {
+    [JsonPropertyName("address")]
+    public string Address { get; set; }
+    
     [JsonPropertyName("from")]
-    public string FromAsset { get; set; } = "BTC"; // Lightning
+    public string From { get; set; } = "BTC"; // Lightning
 
     [JsonPropertyName("to")]
-    public string ToAsset { get; set; } = "L-BTC"; // Liquid
+    public string To { get; set; } = "L-BTC";
+    
+    [JsonPropertyName("claimCovenant")]
+    public bool ClaimCovenant { get; set; }
 
     [JsonPropertyName("invoiceAmount")]
     public long InvoiceAmountSat { get; set; }
@@ -23,8 +29,6 @@ public class CreateReverseSwapRequest
 
     [JsonPropertyName("claimPublicKey")]
     public string ClaimPublicKey { get; set; } = string.Empty;
-
-    // Optional fields like referralId, webhookUrl etc. can be added if needed
 }
 
 // --- Response DTOs ---
@@ -37,11 +41,20 @@ public class CreateReverseSwapResponse
     [JsonPropertyName("invoice")]
     public string Invoice { get; set; } = string.Empty;
 
+    [JsonPropertyName("swapTree")]
+    public SwapTree? SwapTree { get; set; }
+
     [JsonPropertyName("lockupAddress")]
     public string LockupAddress { get; set; } = string.Empty; // Address Boltz locks funds to
 
     [JsonPropertyName("refundPublicKey")]
     public string RefundPublicKey { get; set; } = string.Empty; // Boltz's key
+
+    [JsonPropertyName("refundAddress")]
+    public string RefundAddress { get; set; } = string.Empty;
+
+    [JsonPropertyName("onchainAmount")]
+    public int OnchainAmount { get; set; }
 
     [JsonPropertyName("timeoutBlockHeight")]
     public int TimeoutBlockHeight { get; set; }
@@ -49,15 +62,8 @@ public class CreateReverseSwapResponse
     [JsonPropertyName("blindingKey")]
     public string? BlindingKey { get; set; } // For Liquid
 
-    [JsonPropertyName("swapTree")]
-    public SwapTree? SwapTree { get; set; }
-
-    // Add other fields as needed, e.g., fees
-    [JsonPropertyName("expectedAmount")]
-    public long ExpectedAmount { get; set; }
-
-    [JsonPropertyName("minerFees")]
-    public MinerFees? MinerFees { get; set; } // Boltz fee estimation
+    [JsonPropertyName("referralId")]
+    public string ReferralId { get; set; }
 }
 
 public class SwapTree

@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Lightning;
+using BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
 using NBitcoin.DataEncoders;
@@ -24,21 +25,24 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     private readonly ConcurrentDictionary<string, string> _preimageHashToSwapId = new();
     private readonly ConcurrentDictionary<string, SwapData> _swapData = new(); // Key: Swap ID
     private readonly BoltzWebSocketService _webSocketService;
+    private readonly CovClaimDaemon _covClaimDaemon;
 
-    public BoltzLightningClient(BoltzOptions options, HttpClient httpClient, BoltzWebSocketService webSocketService, ILogger<BoltzLightningClient> logger)
+    public BoltzLightningClient(BoltzOptions options, HttpClient httpClient, BoltzWebSocketService webSocketService, 
+        ILogger<BoltzLightningClient> logger, CovClaimDaemon covClaimDaemon)
     {
         _options = options;
         _httpClient = httpClient;
         _webSocketService = webSocketService;
-        Logger = logger;
+        _logger = logger;
+        _covClaimDaemon = covClaimDaemon;
         _httpClient.BaseAddress = options.ApiUrl;
     }
 
-    public ILogger<BoltzLightningClient> Logger { get; }
+    public ILogger<BoltzLightningClient> _logger { get; }
 
     public void Dispose()
     {
-        Logger.LogInformation("Disposing BoltzLightningClient.");
+        _logger.LogInformation("Disposing BoltzLightningClient.");
         // HttpClient is managed externally (HttpClientFactory)
         // WebSocketService is managed externally (Hosted Service)
         _swapData.Clear();
@@ -53,17 +57,13 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
     public async Task<LightningInvoice> CreateInvoice(LightMoney amount, string description, TimeSpan expiry, CancellationToken cancellationToken = default)
     {
-        Logger.LogInformation($"CreateInvoice called: Amount={amount}, Description='{description}', Expiry={expiry}");
-        if (!string.IsNullOrEmpty(description)) Logger.LogWarning("Boltz CreateInvoice does not use the 'description' field.");
-        // if (expiry != TimeSpan.Zero && expiry != BoltzConstants.DefaultInvoiceExpiry) {
-        //  // Assuming a default constant exists or comparing to a reasonable default
-        //     _logger.LogWarning($"Boltz CreateInvoice does not use the custom 'expiry' field. Using default Boltz expiry. Requested: {expiry}");
-        // }
+        _logger.LogInformation($"CreateInvoice called: Amount={amount}, Description='{description}', Expiry={expiry}");
+        if (!string.IsNullOrEmpty(description)) _logger.LogWarning("Boltz CreateInvoice does not use the 'description' field.");
 
         // Input validation (Basic)
         if (amount == null || amount <= LightMoney.Zero)
         {
-            Logger.LogError("Invalid amount for CreateInvoice.");
+            _logger.LogError("Invalid amount for CreateInvoice.");
             throw new Exception("Invalid amount for CreateInvoice.");
         }
 
@@ -74,19 +74,21 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             var preimageHash = SHA256.HashData(preimage);
             var preimageHashHex = Convert.ToHexString(preimageHash).ToLowerInvariant();
 
-            Logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (Lightning -> {_options.SwapTo})");
-            Logger.LogDebug($"Preimage Hash: {preimageHashHex}");
+            _logger.LogInformation($"Creating Boltz Reverse Swap for {amount.ToUnit(LightMoneyUnit.Satoshi)} sats (Lightning -> {_options.SwapTo})");
+            _logger.LogDebug($"Preimage Hash: {preimageHashHex}");
 
             // 2. Generate ephemeral key pair for this swap's claim mechanism
             var claimPrivateKey = new Key();
             var claimPublicKeyHex = claimPrivateKey.PubKey.ToHex();
-            Logger.LogDebug($"Using ephemeral Claim Public Key: {claimPublicKeyHex}");
+            _logger.LogDebug($"Using ephemeral Claim Public Key: {claimPublicKeyHex}");
 
             // 3. Call Boltz API to create reverse swap
             var request = new CreateReverseSwapRequest
             {
-                FromAsset = "BTC", // We receive BTC (Lightning)
-                ToAsset = _options.SwapTo, // We send L-BTC (on-chain)
+                Address = _options.SwapAddress,
+                From = "BTC", // We receive BTC (Lightning)
+                To = _options.SwapTo, // We send L-BTC (on-chain)
+                ClaimCovenant = true,
                 InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
                 PreimageHash = preimageHashHex,
                 ClaimPublicKey = claimPublicKeyHex // Provide the public key for the claim script
@@ -94,10 +96,10 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 // Description? req.Description / req.DescriptionHash
             };
 
-            Logger.LogInformation($"Sending CreateReverseSwap request to Boltz API: {_httpClient.BaseAddress}v2/swap/reverse");
-            Logger.LogDebug(
-                $"CreateReverseSwap Request Payload: From={request.FromAsset}, To={request.ToAsset}, Amount={request.InvoiceAmountSat}, PreimageHash={request.PreimageHash}, ClaimPubKey={request.ClaimPublicKey}");
-            Logger.LogDebug($"Cancellation Token Status Before Call: IsCancellationRequested={cancellationToken.IsCancellationRequested}");
+            _logger.LogInformation($"Sending CreateReverseSwap request to Boltz API: {_httpClient.BaseAddress}v2/swap/reverse");
+            _logger.LogDebug(
+                $"CreateReverseSwap Request Payload: From={request.From}, To={request.To}, Amount={request.InvoiceAmountSat}, PreimageHash={request.PreimageHash}, ClaimPubKey={request.ClaimPublicKey}");
+            _logger.LogDebug($"Cancellation Token Status Before Call: IsCancellationRequested={cancellationToken.IsCancellationRequested}");
 
             // Explicitly call the extension method to resolve ambiguity
             var cancellationTokenDebug = new CancellationToken(false);
@@ -110,18 +112,18 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
             if (swapResponse == null || string.IsNullOrEmpty(swapResponse.Id) || string.IsNullOrEmpty(swapResponse.Invoice))
             {
-                Logger.LogError("Boltz API returned invalid response for reverse swap creation.");
+                _logger.LogError("Boltz API returned invalid response for reverse swap creation.");
                 throw new Exception("Failed to create reverse swap: Invalid response from Boltz API.");
             }
 
-            Logger.LogInformation($"Boltz Reverse Swap created successfully. ID: {swapResponse.Id}, Invoice: {swapResponse.Invoice.Substring(0, 15)}...");
+            _logger.LogInformation($"Boltz Reverse Swap created successfully. ID: {swapResponse.Id}, Invoice: {swapResponse.Invoice.Substring(0, 15)}...");
 
             // 4. Parse the returned Lightning Invoice
             var bolt11 = BOLT11PaymentRequest.Parse(swapResponse.Invoice,
                 _options.IsTestnet ? Network.TestNet : Network.Main);
             var invoice = new LightningInvoice
             {
-                Id = bolt11.PaymentHash.ToString(),
+                Id = swapResponse.Id,
                 BOLT11 = swapResponse.Invoice,
                 Amount = bolt11.MinimumAmount,
                 ExpiresAt = bolt11.ExpiryDate,
@@ -131,21 +133,27 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             };
 
             // 5. Store Swap Data and Subscribe to Updates
-            var newSwap = new SwapData
+            // https://docs.boltz.exchange/api/claim-covenants
+            var restClient = _covClaimDaemon.CovClaimClient;
+            await restClient.RegisterCovenant(new CovClaimRegisterRequest
+            {
+                Address = request.Address,
+                Preimage = request.PreimageHash,
+                Tree = swapResponse.SwapTree,
+                BlindingKey = swapResponse.BlindingKey,
+                ClaimPublicKey = request.ClaimPublicKey,
+                RefundPublicKey = swapResponse.RefundPublicKey
+            });
+
+            _swapData.TryAdd(swapResponse.Id, new SwapData
             {
                 Id = swapResponse.Id,
-                Preimage = preimage, // Store the actual preimage bytes
+                Preimage = preimage,
                 PreimageHash = preimageHashHex,
-                OriginalInvoice = invoice, // Store our constructed invoice
-                ClaimPrivateKey = claimPrivateKey, // Store the generated private key
-                RefundPublicKey = swapResponse.RefundPublicKey,
-                LockupAddress = swapResponse.LockupAddress,
-                BlindingKey = swapResponse.BlindingKey,
-                SwapResponse = swapResponse,
+                OriginalInvoice = invoice,
+                LastStatusUpdate = null,
                 IsPaid = false
-            };
-
-            _swapData.TryAdd(swapResponse.Id, newSwap);
+            });
             _preimageHashToSwapId.TryAdd(preimageHashHex, swapResponse.Id);
 
             // Subscribe via WebSocket
@@ -155,12 +163,12 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         }
         catch (HttpRequestException httpEx)
         {
-            Logger.LogError(httpEx, "HTTP error creating Boltz reverse swap.");
+            _logger.LogError(httpEx, "HTTP error creating Boltz reverse swap.");
             throw new Exception($"Failed to communicate with Boltz API: {httpEx.Message}", httpEx);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error creating Boltz reverse swap invoice.");
+            _logger.LogError(ex, "Error creating Boltz reverse swap invoice.");
             throw;
         }
     }
@@ -170,11 +178,11 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         // In Boltz context, 'invoiceId' often corresponds to the 'swapId'.
         // Cancelling means we stop listening for updates for this swap.
         var swapId = invoiceId;
-        Logger.LogInformation($"Attempting to cancel listening for invoice/swap ID: {swapId}");
+        _logger.LogInformation($"Attempting to cancel listening for invoice/swap ID: {swapId}");
 
         if (_activeListeners.TryRemove(swapId, out var listener))
         {
-            Logger.LogInformation($"Removed active listener for swap {swapId} due to cancellation request.");
+            _logger.LogInformation($"Removed active listener for swap {swapId} due to cancellation request.");
             listener.Dispose(); // Dispose the listener to clean up resources and stop waiting
             // Note: We don't necessarily tell the Boltz *server* to cancel, 
             // as swaps might be atomic or have specific timeout mechanisms.
@@ -182,7 +190,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         }
         else
         {
-            Logger.LogWarning($"Could not cancel invoice/swap {swapId}: No active listener found.");
+            _logger.LogWarning($"Could not cancel invoice/swap {swapId}: No active listener found.");
             // It might have already completed or never been listened to.
         }
 
@@ -197,7 +205,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             }
 
         if (preimageHashToRemove != null && _preimageHashToSwapId.TryRemove(preimageHashToRemove, out _))
-            Logger.LogDebug($"Removed preimage hash mapping for cancelled swap {swapId}.");
+            _logger.LogDebug($"Removed preimage hash mapping for cancelled swap {swapId}.");
 
         // Unsubscribe from WebSocket updates for this swap ID
         await _webSocketService.UnsubscribeFromSwapAsync(swapId, cancellationToken);
@@ -205,57 +213,57 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
     public Task<ILightningInvoiceListener> Listen(string paymentHash, CancellationToken cancellationToken = default)
     {
-        Logger.LogInformation($"Listen called for PaymentHash: {paymentHash}");
+        _logger.LogInformation($"Listen called for PaymentHash: {paymentHash}");
 
         // Look up the swap ID associated with this payment hash
         if (!_preimageHashToSwapId.TryGetValue(paymentHash.ToLowerInvariant(), out var swapId))
         {
-            Logger.LogError($"Listen called for unknown paymentHash: {paymentHash}. Swap data may not exist yet or invoice creation failed.");
+            _logger.LogError($"Listen called for unknown paymentHash: {paymentHash}. Swap data may not exist yet or invoice creation failed.");
             // Throw an exception as we cannot listen for an untracked swap
             return Task.FromException<ILightningInvoiceListener>(
                 new InvalidOperationException($"Cannot listen for paymentHash {paymentHash}: Corresponding swap not found."));
         }
 
-        Logger.LogDebug($"Found swapId {swapId} for paymentHash {paymentHash}. Checking for existing listener.");
+        _logger.LogDebug($"Found swapId {swapId} for paymentHash {paymentHash}. Checking for existing listener.");
 
         // Check if a listener already exists for this swapId
         if (_activeListeners.TryGetValue(swapId, out var existingListener))
         {
-            Logger.LogInformation($"Returning existing listener for swap {swapId}");
+            _logger.LogInformation($"Returning existing listener for swap {swapId}");
             return Task.FromResult<ILightningInvoiceListener>(existingListener);
         }
 
         // Create and register a new listener
-        var listener = new BoltzInvoiceListener(this, swapId, CleanupListenerResources, Logger, cancellationToken);
+        var listener = new BoltzInvoiceListener(this, swapId, CleanupListenerResources, _logger, cancellationToken);
 
         if (!_activeListeners.TryAdd(swapId, listener))
         {
             // This should theoretically not happen if the previous TryGetValue failed, but handle defensively
-            Logger.LogWarning($"Failed to add new listener for swap {swapId}, but it wasn't found previously. Attempting lookup again.");
+            _logger.LogWarning($"Failed to add new listener for swap {swapId}, but it wasn't found previously. Attempting lookup again.");
             if (_activeListeners.TryGetValue(swapId, out existingListener))
             {
-                Logger.LogInformation($"Returning existing listener found on second attempt for swap {swapId}");
+                _logger.LogInformation($"Returning existing listener found on second attempt for swap {swapId}");
                 listener.Dispose(); // Dispose the newly created one
                 return Task.FromResult<ILightningInvoiceListener>(existingListener);
             }
 
-            Logger.LogError($"Concurrency issue: Failed to add or retrieve listener for swap {swapId}.");
+            _logger.LogError($"Concurrency issue: Failed to add or retrieve listener for swap {swapId}.");
             listener.Dispose();
             return Task.FromException<ILightningInvoiceListener>(
                 new InvalidOperationException($"Failed to register listener for swap {swapId} due to unexpected concurrency state."));
         }
 
-        Logger.LogInformation($"Created and registered new listener for swap {swapId} (PaymentHash: {paymentHash})");
+        _logger.LogInformation($"Created and registered new listener for swap {swapId} (PaymentHash: {paymentHash})");
         return Task.FromResult<ILightningInvoiceListener>(listener);
     }
 
     // Called by the listener itself via cleanup delegate
     private void CleanupListenerResources(string swapId)
     {
-        Logger.LogDebug($"Cleaning up resources for listener associated with swap {swapId}");
+        _logger.LogDebug($"Cleaning up resources for listener associated with swap {swapId}");
         if (_activeListeners.TryRemove(swapId, out var listener))
         {
-            Logger.LogDebug($"Removed listener for swap {swapId} from active dictionary.");
+            _logger.LogDebug($"Removed listener for swap {swapId} from active dictionary.");
             // Ensure listener's TaskCompletionSource is cancelled if not already done by Dispose
             try
             {
@@ -268,14 +276,14 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         }
         else
         {
-            Logger.LogWarning($"Attempted to clean up resources for swap {swapId}, but listener was not found in active dictionary.");
+            _logger.LogWarning($"Attempted to clean up resources for swap {swapId}, but listener was not found in active dictionary.");
         }
         // Note: Unsubscribing from WebSocket happens when swap status reaches a final state (paid/failed) or during CancelInvoice.
     }
 
     private async Task HandleSwapUpdate(SwapStatusUpdate update)
     {
-        Logger.LogInformation($"Handling status update for swap {update.Id}: {update.Status}");
+        _logger.LogInformation($"Handling status update for swap {update.Id}: {update.Status}");
         if (_swapData.TryGetValue(update.Id, out var swap))
         {
             swap.LastStatusUpdate = update; // Update latest status
@@ -287,7 +295,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
             if (isPaid && !swap.IsPaid)
             {
-                Logger.LogInformation($"Swap {update.Id} detected as PAID (Status: {update.Status}). Notifying listener.");
+                _logger.LogInformation($"Swap {update.Id} detected as PAID (Status: {update.Status}). Notifying listener.");
                 swap.IsPaid = true;
 
                 // Update the stored invoice status and add preimage
@@ -299,18 +307,15 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 if (_activeListeners.TryGetValue(swap.Id, out var listener))
                     listener.TriggerInvoicePaid(swap.OriginalInvoice);
                 else
-                    Logger.LogWarning($"Swap {swap.Id} paid, but no active listener found.");
+                    _logger.LogWarning($"Swap {swap.Id} paid, but no active listener found.");
 
                 // Once paid, we can unsubscribe from updates for this swap
                 // Use CancellationToken.None as this is a background task
                 await _webSocketService.UnsubscribeFromSwapAsync(swap.Id, CancellationToken.None);
-
-                // RECEIVED PAYMENT, NOW CLAIMING
-                await ClaimLiquidFunds(swap);
             }
             else if (IsFailedStatus(update.Status))
             {
-                Logger.LogWarning($"Swap {update.Id} failed (Status: {update.Status}). Notifying listener of failure.");
+                _logger.LogWarning($"Swap {update.Id} failed (Status: {update.Status}). Notifying listener of failure.");
                 swap.OriginalInvoice.Status = LightningInvoiceStatus.Expired; // Or a custom 'Failed' status if possible?
                 swap.OriginalInvoice.AmountReceived = LightMoney.Zero; // Ensure AmountReceived is set on failure
 
@@ -324,64 +329,8 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         }
         else
         {
-            Logger.LogWarning($"Received status update for unknown or removed swap ID: {update.Id}");
+            _logger.LogWarning($"Received status update for unknown or removed swap ID: {update.Id}");
         }
-    }
-
-    private async Task ClaimLiquidFunds(SwapData swap)
-    {
-        // TODO: Needs implementing, we don't have primitives for this in BTCPay
-        
-        // // Retrieve necessary data from stored SwapData
-        // var swapId = swap.Id;
-        // var preimage = swap.Preimage;
-        // var claimPrivateKey = swap.ClaimPrivateKey;
-        // var redeemScript = swap.SwapResponse.RedeemScript;
-        // var lockupAddress = swap.LockupAddress;
-        // var lockupTransactionId = swap.SwapResponse.LockupTransactionId;
-        // var lockupVout = swap.SwapResponse.LockupVout;
-        // var lockupAmount = swap.SwapResponse.LockupAmount;
-        // var assetId = swap.SwapResponse.AssetId;
-        // var destinationAddress = _options.SwapAddress;
-        // var network = _options.IsTestnet ? Network.LiquidTestnet : Network.Liquid;
-        //
-        // // Construct the Liquid Transaction (PSET)
-        // var psbt = new PSBT();
-        // psbt.Inputs.Add(new PSBTInput
-        // {
-        //     NonWitnessUtxo = new TxOut(lockupAmount, redeemScript),
-        //     WitnessUtxo = new TxOut(lockupAmount, redeemScript),
-        //     OutPoint = new OutPoint(lockupTransactionId, lockupVout),
-        //     RedeemScript = redeemScript,
-        //     SighashType = SigHash.All,
-        // });
-        //
-        // // Add the output
-        // var output = new TxOut(lockupAmount, destinationAddress);
-        // psbt.Outputs.Add(output);
-        //
-        // // Prepare for Taproot Script Path Signing
-        // var internalKey = claimPrivateKey.GetWif(network).GetAddress(network);
-        // var controlBlock = new byte[33 + 1 + redeemScript.Length];
-        // controlBlock[0] = (byte)(internalKey.IsCompressed ? 0x01 : 0x00);
-        // internalKey.GetPubKey().ToBytes(controlBlock, 1);
-        // redeemScript.ToBytes(controlBlock, 34);
-        //
-        // // Sign the PSET Input
-        // var signature = claimPrivateKey.Sign(preimage, SigHash.All, redeemScript, controlBlock);
-        // psbt.Inputs[0].FinalScriptWitness = new ScriptWitness(new[] { signature.ToDER() });
-        //
-        // // Finalize the PSET
-        // psbt.Finalize();
-        //
-        // // Extract the final, signed transaction
-        // var finalTx = psbt.ExtractTransaction();
-        //
-        // // Broadcast the Transaction
-        // var broadcastResponse = await _httpClient.PostAsJsonAsync("/api/tx", new { tx = finalTx.ToHex() });
-        // broadcastResponse.EnsureSuccessStatusCode();
-        //
-        // Logger.LogInformation($"Liquid claim transaction broadcasted for swap {swapId}. Transaction ID: {finalTx.GetHash().ToString()}");
     }
 
     private bool IsFailedStatus(string? status)
@@ -399,11 +348,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         public required byte[] Preimage { get; init; } // Store the preimage
         public required string PreimageHash { get; init; }
         public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
-        public required Key ClaimPrivateKey { get; init; } // Store the private key needed for claiming
-        public required string RefundPublicKey { get; init; }
-        public required string LockupAddress { get; init; }
-        public required string BlindingKey { get; init; }
-        public CreateReverseSwapResponse? SwapResponse { get; set; }
         public SwapStatusUpdate? LastStatusUpdate { get; set; }
         public bool IsPaid { get; set; } // Flag indicating if listener was notified
     }

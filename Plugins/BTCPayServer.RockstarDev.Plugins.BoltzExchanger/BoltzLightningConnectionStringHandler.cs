@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using BTCPayServer.Lightning;
+using BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -15,13 +16,16 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly BoltzWebSocketService _webSocketService;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly CovClaimDaemon _covClaimDaemon;
 
     // Inject required services
-    public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzWebSocketService webSocketService, ILoggerFactory loggerFactory)
+    public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzWebSocketService webSocketService, ILoggerFactory loggerFactory,
+        CovClaimDaemon covClaimDaemon)
     {
         _httpClientFactory = httpClientFactory;
         _webSocketService = webSocketService;
         _loggerFactory = loggerFactory;
+        _covClaimDaemon = covClaimDaemon;
     }
 
     public ILightningClient? Create(string connectionString, Network network, out string? error)
@@ -104,7 +108,7 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
         var logger = _loggerFactory.CreateLogger<BoltzLightningClient>();
 
         // Instantiate the client
-        var client = new BoltzLightningClient(options, httpClient, _webSocketService, logger);
+        var client = new BoltzLightningClient(options, httpClient, _webSocketService, logger, _covClaimDaemon);
 
         error = null;
         return client;

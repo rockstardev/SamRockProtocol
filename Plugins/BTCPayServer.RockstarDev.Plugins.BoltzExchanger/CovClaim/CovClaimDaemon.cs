@@ -23,6 +23,10 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
         private readonly IOptions<DataDirectories> _dataDirectories;
         private readonly IHttpClientFactory _httpClientFactory; // For downloading
 
+        private readonly ILogger<CovClaimDaemonRestClient> _loggerRestClient;
+
+        public CovClaimDaemonRestClient CovClaimClient { get; private set; }
+
         // Process Management
         private Process? _process;
         private CancellationTokenSource? _stopCts;
@@ -49,11 +53,13 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
         public CovClaimDaemon(
             ILogger<CovClaimDaemon> logger,
             IOptions<DataDirectories> dataDirectories,
-            IHttpClientFactory httpClientFactory)
+            IHttpClientFactory httpClientFactory,
+            ILogger<CovClaimDaemonRestClient> loggerRestClient)
         {
             _logger = logger;
             _dataDirectories = dataDirectories;
             _httpClientFactory = httpClientFactory;
+            _loggerRestClient = loggerRestClient;
         }
 
         // --- IHostedService Implementation ---
@@ -141,6 +147,8 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
                 {
                     _logger.LogInformation("CovClaimDaemon signaled readiness.");
                 }
+
+                CovClaimClient = new CovClaimDaemonRestClient(_loggerRestClient, _httpClientFactory, "http://127.0.0.1:35791/covenant");
             }
             catch (Exception ex)
             {
@@ -220,7 +228,7 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
         private void CheckForReadinessSignal(string logLine)
         {
              // Adjust this string based on the *actual* output of your covclaim daemon
-             // Example: "Started API server on: 127.0.0.1:1234"
+             // Example: "Started API server on: 127.0.0.1:35791"
              if (logLine.Contains("Started API server on", StringComparison.OrdinalIgnoreCase))
              {
                  if (!_daemonReadyTcs.Task.IsCompleted) // Avoid logging multiple times if signal appears in both streams

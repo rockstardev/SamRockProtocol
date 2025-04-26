@@ -13,16 +13,18 @@ public class CovClaimDaemonRestClient
 {
     private readonly ILogger<CovClaimDaemonRestClient> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly string _apiUrl;
 
-    public CovClaimDaemonRestClient(ILogger<CovClaimDaemonRestClient> logger, IHttpClientFactory httpClientFactory)
+    public CovClaimDaemonRestClient(ILogger<CovClaimDaemonRestClient> logger, IHttpClientFactory httpClientFactory, string apiUrl)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
+        _apiUrl = apiUrl;
     }
 
-    public async Task<bool> RegisterCovenant(string apiUrl, CovClaimRegisterRequest requestBody, CancellationToken cancellationToken = default)
+    public async Task<bool> RegisterCovenant(CovClaimRegisterRequest requestBody, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Registering covenant {SwapId} with API: {ApiUrl}", requestBody.SwapId, apiUrl);
+        _logger.LogInformation("Registering covenant {SwapId} with API: {ApiUrl}", requestBody.ClaimPublicKey, _apiUrl);
 
         try
         {
@@ -32,9 +34,9 @@ public class CovClaimDaemonRestClient
 
             // Log the request body being sent
             var jsonRequest = JsonSerializer.Serialize(requestBody, new JsonSerializerOptions { WriteIndented = true });
-            _logger.LogDebug("Sending covenant registration request to {ApiUrl}:\n{JsonRequest}", apiUrl, jsonRequest);
+            _logger.LogDebug("Sending covenant registration request to {ApiUrl}:\n{JsonRequest}", _apiUrl, jsonRequest);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, apiUrl)
+            using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl)
             {
                 Content = JsonContent.Create(requestBody, mediaType: new MediaTypeHeaderValue("application/json"), options: null) // Default serializer options
             };
@@ -44,39 +46,39 @@ public class CovClaimDaemonRestClient
             using var response = await client.SendAsync(request, cancellationToken);
 
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogDebug("Received response from {ApiUrl}: Status {StatusCode}, Body:\n{ResponseBody}", apiUrl, response.StatusCode, responseBody);
+            _logger.LogDebug("Received response from {ApiUrl}: Status {StatusCode}, Body:\n{ResponseBody}", _apiUrl, response.StatusCode, responseBody);
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Successfully registered covenant {SwapId} via API.", requestBody.SwapId);
+                _logger.LogInformation("Successfully registered covenant {SwapId} via API.", requestBody.ClaimPublicKey);
                 return true;
             }
             else
             {
                 _logger.LogError("Failed to register covenant {SwapId}. API returned status {StatusCode}. Response: {ResponseBody}",
-                    requestBody.SwapId, response.StatusCode, responseBody);
+                    requestBody.ClaimPublicKey, response.StatusCode, responseBody);
                 // Consider parsing error response for more details if the API provides structured errors
                 return false;
             }
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "HTTP request failed when registering covenant {SwapId} at {ApiUrl}.", requestBody.SwapId, apiUrl);
+            _logger.LogError(ex, "HTTP request failed when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
             return false;
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            _logger.LogError(ex, "Request timed out when registering covenant {SwapId} at {ApiUrl}.", requestBody.SwapId, apiUrl);
+            _logger.LogError(ex, "Request timed out when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
             return false; // Handle timeout specifically
         }
         catch (TaskCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning("Request cancelled when registering covenant {SwapId} at {ApiUrl}.", requestBody.SwapId, apiUrl);
+            _logger.LogWarning("Request cancelled when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
             throw; // Re-throw cancellation
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An unexpected error occurred when registering covenant {SwapId} at {ApiUrl}.", requestBody.SwapId, apiUrl);
+            _logger.LogError(ex, "An unexpected error occurred when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
             return false;
         }
     }
@@ -86,21 +88,21 @@ public class CovClaimDaemonRestClient
 public class CovClaimRegisterRequest
 {
     // Match the JSON field names expected by the covclaim API exactly
-    [System.Text.Json.Serialization.JsonPropertyName("swap_id")]
-    public string SwapId { get; set; } = string.Empty;
+    [System.Text.Json.Serialization.JsonPropertyName("claimPublicKey")]
+    public string ClaimPublicKey { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("pubkey")]
-    public string Pubkey { get; set; } = string.Empty;
+    [System.Text.Json.Serialization.JsonPropertyName("refundPublicKey")]
+    public string RefundPublicKey { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("blinding_key")]
+    [System.Text.Json.Serialization.JsonPropertyName("preimage")]
+    public string Preimage { get; set; } = string.Empty; // Assuming preimage is sent as hex string
+
+    [System.Text.Json.Serialization.JsonPropertyName("blindingKey")]
     public string BlindingKey { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("covenant_address")]
-    public string CovenantAddress { get; set; } = string.Empty;
+    [System.Text.Json.Serialization.JsonPropertyName("address")]
+    public string Address { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("funding_txid")]
-    public string FundingTxid { get; set; } = string.Empty;
-
-    [System.Text.Json.Serialization.JsonPropertyName("funding_vout")]
-    public uint FundingVout { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("tree")]
+    public object? Tree { get; set; } // Use 'object' or a specific class if tree structure is known
 }
