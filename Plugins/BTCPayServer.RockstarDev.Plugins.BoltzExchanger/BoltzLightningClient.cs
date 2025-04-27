@@ -135,12 +135,13 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             // 5. Store Swap Data and Subscribe to Updates
             // https://docs.boltz.exchange/api/claim-covenants
             var restClient = _covClaimDaemon.CovClaimClient;
+            var preimageHex = Convert.ToHexString(preimage).ToLowerInvariant(); // Convert preimage bytes to hex
             await restClient.RegisterCovenant(new CovClaimRegisterRequest
             {
-                Address = request.Address,
-                Preimage = request.PreimageHash,
-                Tree = swapResponse.SwapTree,
-                BlindingKey = swapResponse.BlindingKey,
+                Address = swapResponse.LockupAddress, 
+                Preimage = preimageHex, 
+                Tree = swapResponse.SwapTree, // Pass the tree received from Boltz directly
+                BlindingKey = swapResponse.BlindingKey, 
                 ClaimPublicKey = request.ClaimPublicKey,
                 RefundPublicKey = swapResponse.RefundPublicKey
             });

@@ -3,9 +3,11 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim;
 
@@ -87,22 +89,21 @@ public class CovClaimDaemonRestClient
 // Define request/response models for the CovClaim REST API
 public class CovClaimRegisterRequest
 {
-    // Match the JSON field names expected by the covclaim API exactly
-    [System.Text.Json.Serialization.JsonPropertyName("claimPublicKey")]
+    [JsonPropertyName("claimPublicKey")]
     public string ClaimPublicKey { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("refundPublicKey")]
+    [JsonPropertyName("refundPublicKey")]
     public string RefundPublicKey { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("preimage")]
+    [JsonPropertyName("preimage")]
     public string Preimage { get; set; } = string.Empty; // Assuming preimage is sent as hex string
 
-    [System.Text.Json.Serialization.JsonPropertyName("blindingKey")]
+    [JsonPropertyName("blindingKey")]
     public string BlindingKey { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("address")]
+    [JsonPropertyName("address")]
     public string Address { get; set; } = string.Empty;
 
-    [System.Text.Json.Serialization.JsonPropertyName("tree")]
-    public object? Tree { get; set; } // Use 'object' or a specific class if tree structure is known
+    [JsonPropertyName("tree")]
+    public SwapTree? Tree { get; set; } // Use the specific SwapTree type
 }

@@ -73,6 +73,9 @@ public class SwapTree
 
     [JsonPropertyName("refundLeaf")]
     public Leaf RefundLeaf { get; set; } = new();
+
+    [JsonPropertyName("covenantClaimLeaf")]
+    public Leaf? CovenantClaimLeaf { get; set; }
 }
 
 public class Leaf
@@ -82,17 +85,6 @@ public class Leaf
 
     [JsonPropertyName("version")]
     public int Version { get; set; }
-}
-
-public class MinerFees
-{
-    [JsonPropertyName("claim")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? Claim { get; set; }
-
-    [JsonPropertyName("lockup")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? Lockup { get; set; }
 }
 
 // --- WebSocket DTOs ---
