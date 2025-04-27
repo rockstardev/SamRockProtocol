@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -214,28 +215,69 @@ public class BoltzWebSocketService : IHostedService, IDisposable
     {
         try
         {
-            var response = JsonSerializer.Deserialize<WebSocketResponse>(message, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (response?.Event == "update" && response.Args != null)
-                foreach (var update in response.Args)
-                    if (_subscriptions.TryGetValue(update.Id, out var subscription))
+            // Parse the message generically first
+            var jsonNode = JsonNode.Parse(message);
+            var eventType = jsonNode?["event"]?.GetValue<string>();
+
+            if (eventType == "update")
+            {
+                var argsNode = jsonNode?["args"]?.AsArray();
+                if (argsNode != null)
+                {
+                    foreach (var argNode in argsNode)
                     {
-                        _logger.LogInformation($"Received status update for swap {update.Id}: {update.Status}");
-                        // Don't block the receive loop
-                        _ = Task.Run(async () => await subscription.Callback(update));
+                        // Deserialize each argument in the array as SwapStatusUpdate
+                        // Use try-catch for individual deserialization robustness
+                        try
+                        {
+                            var update = argNode?.Deserialize<SwapStatusUpdate>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            if (update != null && _subscriptions.TryGetValue(update.Id, out var subscription))
+                            {
+                                _logger.LogInformation($"Received status update for swap {update.Id}: {update.Status}");
+                                // Don't block the receive loop
+                                _ = Task.Run(async () => await subscription.Callback(update));
+                            }
+                            else if (update != null)
+                            {
+                                _logger.LogDebug($"Received update for unsubscribed swap {update.Id}");
+                            }
+                        }
+                        catch (JsonException updateEx)
+                        {
+                            _logger.LogError(updateEx, $"Failed to deserialize update argument: {argNode?.ToJsonString()}");
+                        }
                     }
-                    else
-                    {
-                        _logger.LogDebug($"Received update for unsubscribed swap {update.Id}");
-                    }
-            else if (response?.Event == "pong")
+                }
+            }
+            else if (eventType == "pong")
+            {
                 _logger.LogDebug("Received pong from Boltz WS");
-            else if (response?.Event == "subscribe")
+            }
+            else if (eventType == "subscribe")
+            {
+                // Handle subscribe confirmation - args is an array of strings (swap IDs)
+                var argsArray = jsonNode?["args"]?.AsArray();
+                var subscribedIds = argsArray?.Select(node => node?.GetValue<string>() ?? string.Empty).Where(id => !string.IsNullOrEmpty(id));
                 _logger.LogInformation(
-                    $"Subscription confirmed by Boltz WS for IDs: {string.Join(',', response.Args?.Select(a => a.Id) ?? new List<string>())}");
-            else if (response?.Event == "unsubscribe")
+                    $"Subscription confirmed by Boltz WS for IDs: {string.Join(',', subscribedIds ?? Enumerable.Empty<string>())}");
+            }
+            else if (eventType == "unsubscribe")
+            {
+                // Handle unsubscribe confirmation - args might be empty or contain remaining IDs (strings)
+                var argsArray = jsonNode?["args"]?.AsArray();
+                var remainingIds = argsArray?.Select(node => node?.GetValue<string>() ?? string.Empty).Where(id => !string.IsNullOrEmpty(id));
                 _logger.LogInformation(
-                    $"Unsubscription confirmed by Boltz WS. Remaining Args: {string.Join(',', response.Args?.Select(a => a.Id) ?? new List<string>())}");
-            else if (response?.Event == "error") _logger.LogError($"Received error from Boltz WS: {message}");
+                    $"Unsubscription confirmed by Boltz WS. Remaining Args: {string.Join(',', remainingIds ?? Enumerable.Empty<string>())}");
+            }
+            else if (eventType == "error")
+            {
+                _logger.LogError($"Received error from Boltz WS: {message}");
+            }
+            // Add handling for other potential event types if necessary
+            else
+            {
+                _logger.LogWarning($"Received unhandled Boltz WS event type '{eventType}': {message}");
+            }
         }
         catch (JsonException jex)
         {
