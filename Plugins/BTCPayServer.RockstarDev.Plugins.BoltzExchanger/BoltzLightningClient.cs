@@ -17,9 +17,9 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 public partial class BoltzLightningClient : ILightningClient, IDisposable
 {
-    private readonly ConcurrentDictionary<string, BoltzInvoiceListener> _activeListeners = new(); // Key: Swap ID
     private readonly HttpClient _httpClient;
     private readonly BoltzOptions _options;
+    private readonly EventAggregator _eventAggregator;
 
     // Internal cache for preimage -> swap ID mapping for lookups
     private readonly ConcurrentDictionary<string, string> _preimageHashToSwapId = new();
@@ -28,13 +28,14 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     private readonly CovClaimDaemon _covClaimDaemon;
 
     public BoltzLightningClient(BoltzOptions options, HttpClient httpClient, BoltzWebSocketService webSocketService, 
-        ILogger<BoltzLightningClient> logger, CovClaimDaemon covClaimDaemon)
+        ILogger<BoltzLightningClient> logger, CovClaimDaemon covClaimDaemon, EventAggregator eventAggregator)
     {
         _options = options;
         _httpClient = httpClient;
         _webSocketService = webSocketService;
         _logger = logger;
         _covClaimDaemon = covClaimDaemon;
+        _eventAggregator = eventAggregator;
         _httpClient.BaseAddress = options.ApiUrl;
     }
 
@@ -46,7 +47,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         // HttpClient is managed externally (HttpClientFactory)
         // WebSocketService is managed externally (Hosted Service)
         _swapData.Clear();
-        _activeListeners.Clear();
         _preimageHashToSwapId.Clear();
     }
 
@@ -144,7 +144,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 BlindingKey = swapResponse.BlindingKey, 
                 ClaimPublicKey = request.ClaimPublicKey,
                 RefundPublicKey = swapResponse.RefundPublicKey
-            });
+            }, cancellationTokenDebug);
 
             _swapData.TryAdd(swapResponse.Id, new SwapData
             {
@@ -181,20 +181,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         var swapId = invoiceId;
         _logger.LogInformation($"Attempting to cancel listening for invoice/swap ID: {swapId}");
 
-        if (_activeListeners.TryRemove(swapId, out var listener))
-        {
-            _logger.LogInformation($"Removed active listener for swap {swapId} due to cancellation request.");
-            listener.Dispose(); // Dispose the listener to clean up resources and stop waiting
-            // Note: We don't necessarily tell the Boltz *server* to cancel, 
-            // as swaps might be atomic or have specific timeout mechanisms.
-            // We just stop tracking it on the client-side.
-        }
-        else
-        {
-            _logger.LogWarning($"Could not cancel invoice/swap {swapId}: No active listener found.");
-            // It might have already completed or never been listened to.
-        }
-
         // Also remove the preimage mapping if it exists
         // Find the preimage hash associated with this swapId
         string? preimageHashToRemove = null;
@@ -212,76 +198,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         await _webSocketService.UnsubscribeFromSwapStatusAsync(WebSocketUri(), swapId, cancellationToken);
     }
 
-    public Task<ILightningInvoiceListener> Listen(string paymentHash, CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation($"Listen called for PaymentHash: {paymentHash}");
-
-        // Look up the swap ID associated with this payment hash
-        if (!_preimageHashToSwapId.TryGetValue(paymentHash.ToLowerInvariant(), out var swapId))
-        {
-            _logger.LogError($"Listen called for unknown paymentHash: {paymentHash}. Swap data may not exist yet or invoice creation failed.");
-            // Throw an exception as we cannot listen for an untracked swap
-            return Task.FromException<ILightningInvoiceListener>(
-                new InvalidOperationException($"Cannot listen for paymentHash {paymentHash}: Corresponding swap not found."));
-        }
-
-        _logger.LogDebug($"Found swapId {swapId} for paymentHash {paymentHash}. Checking for existing listener.");
-
-        // Check if a listener already exists for this swapId
-        if (_activeListeners.TryGetValue(swapId, out var existingListener))
-        {
-            _logger.LogInformation($"Returning existing listener for swap {swapId}");
-            return Task.FromResult<ILightningInvoiceListener>(existingListener);
-        }
-
-        // Create and register a new listener
-        var listener = new BoltzInvoiceListener(this, swapId, CleanupListenerResources, _logger, cancellationToken);
-
-        if (!_activeListeners.TryAdd(swapId, listener))
-        {
-            // This should theoretically not happen if the previous TryGetValue failed, but handle defensively
-            _logger.LogWarning($"Failed to add new listener for swap {swapId}, but it wasn't found previously. Attempting lookup again.");
-            if (_activeListeners.TryGetValue(swapId, out existingListener))
-            {
-                _logger.LogInformation($"Returning existing listener found on second attempt for swap {swapId}");
-                listener.Dispose(); // Dispose the newly created one
-                return Task.FromResult<ILightningInvoiceListener>(existingListener);
-            }
-
-            _logger.LogError($"Concurrency issue: Failed to add or retrieve listener for swap {swapId}.");
-            listener.Dispose();
-            return Task.FromException<ILightningInvoiceListener>(
-                new InvalidOperationException($"Failed to register listener for swap {swapId} due to unexpected concurrency state."));
-        }
-
-        _logger.LogInformation($"Created and registered new listener for swap {swapId} (PaymentHash: {paymentHash})");
-        return Task.FromResult<ILightningInvoiceListener>(listener);
-    }
-
-    // Called by the listener itself via cleanup delegate
-    private void CleanupListenerResources(string swapId)
-    {
-        _logger.LogDebug($"Cleaning up resources for listener associated with swap {swapId}");
-        if (_activeListeners.TryRemove(swapId, out var listener))
-        {
-            _logger.LogDebug($"Removed listener for swap {swapId} from active dictionary.");
-            // Ensure listener's TaskCompletionSource is cancelled if not already done by Dispose
-            try
-            {
-                if (!listener._tcs.Task.IsCompleted) listener._tcs.TrySetCanceled();
-            }
-            catch (ObjectDisposedException)
-            {
-                /* Ignore if already disposed */
-            }
-        }
-        else
-        {
-            _logger.LogWarning($"Attempted to clean up resources for swap {swapId}, but listener was not found in active dictionary.");
-        }
-        // Note: Unsubscribing from WebSocket happens when swap status reaches a final state (paid/failed) or during CancelInvoice.
-    }
-
     private async Task HandleSwapUpdate(SwapStatusUpdate update)
     {
         _logger.LogInformation($"Handling status update for swap {update.Id}: {update.Status}");
@@ -296,19 +212,26 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
             if (isPaid && !swap.IsPaid)
             {
-                _logger.LogInformation($"Swap {update.Id} detected as PAID (Status: {update.Status}). Notifying listener.");
+                _logger.LogInformation($"Swap {update.Id} detected as PAID (Status: {update.Status}). Publishing event.");
                 swap.IsPaid = true;
 
                 // Update the stored invoice status and add preimage
                 swap.OriginalInvoice.Status = LightningInvoiceStatus.Paid;
                 swap.OriginalInvoice.PaidAt = DateTimeOffset.UtcNow;
-                swap.OriginalInvoice.Preimage = Convert.ToHexString(swap.Preimage).ToLowerInvariant(); // Reveal preimage
 
-                // Find the listener and notify it
-                if (_activeListeners.TryGetValue(swap.Id, out var listener))
-                    listener.TriggerInvoicePaid(swap.OriginalInvoice);
+                // Ensure preimage is included in the invoice object before publishing
+                if (swap.Preimage != null)
+                {
+                    swap.OriginalInvoice.Preimage = Convert.ToHexString(swap.Preimage).ToLowerInvariant();
+                }
                 else
-                    _logger.LogWarning($"Swap {swap.Id} paid, but no active listener found.");
+                {
+                    _logger.LogWarning($"Preimage is null for paid swap {swap.Id} when preparing BoltzSwapPaidEvent.");
+                }
+
+                // Publish the event for the listener to pick up
+                var paidEvent = new BoltzSwapPaidEvent(swap.Id);
+                _eventAggregator.Publish(paidEvent);
 
                 // Once paid, we can unsubscribe from updates for this swap
                 // Use CancellationToken.None as this is a background task
@@ -320,12 +243,14 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 swap.OriginalInvoice.Status = LightningInvoiceStatus.Expired; // Or a custom 'Failed' status if possible?
                 swap.OriginalInvoice.AmountReceived = LightMoney.Zero; // Ensure AmountReceived is set on failure
 
-                if (_activeListeners.TryGetValue(swap.Id, out var listener)) listener.TriggerInvoiceFailure(); // Signal failure to the listener
+                // Optional: Publish a failure event if listeners need to react to failures too.
+                // Example: _eventAggregator.Publish(new BoltzSwapFailedEvent(swap.Id));
+
+                // TODO: Decide if failed swaps should be removed from _swapData / _preimageHashToSwapId
+                // or if the listener should handle this cleanup after WaitInvoice throws.
 
                 // Unsubscribe on failure too
                 await _webSocketService.UnsubscribeFromSwapStatusAsync(WebSocketUri(), swap.Id, CancellationToken.None);
-                _swapData.TryRemove(swap.Id, out _); // Clean up failed swap data?
-                _preimageHashToSwapId.TryRemove(swap.PreimageHash, out _);
             }
         }
         else
@@ -348,6 +273,16 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         // Add known failure statuses from Boltz API documentation
         return lowerStatus.Contains("fail") || lowerStatus.Contains("refund") || lowerStatus == "invoice.expired";
     }
+    
+    public Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = new CancellationToken())
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new CancellationToken())
+    {
+        throw new NotImplementedException();
+    }
 
     // Internal data structure for holding swap details
     private class SwapData
@@ -358,118 +293,5 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
         public SwapStatusUpdate? LastStatusUpdate { get; set; }
         public bool IsPaid { get; set; } // Flag indicating if listener was notified
-    }
-}
-
-internal class BoltzInvoiceListener : ILightningInvoiceListener
-{
-    private readonly CancellationToken _cancellationToken;
-    private readonly Action<string> _cleanupCallback;
-    private readonly BoltzLightningClient _client;
-    private readonly ILogger _logger;
-    private readonly string _swapId; // Store swapId directly
-    internal readonly TaskCompletionSource<LightningInvoice> _tcs = new();
-    private bool _disposed; // Track disposal state
-
-    public BoltzInvoiceListener(BoltzLightningClient client, string swapId, Action<string> cleanupCallback, ILogger logger, CancellationToken cancellationToken)
-    {
-        _client = client;
-        _swapId = swapId;
-        _cleanupCallback = cleanupCallback;
-        _cancellationToken = cancellationToken;
-        _logger = logger; // Use logger from parent client
-        _cancellationToken.Register(() =>
-        {
-            _logger.LogDebug($"BoltzInvoiceListener cancellation token triggered for swap {_swapId}.");
-            // Only cancel TCS if it's not already completed
-            _tcs.TrySetCanceled(_cancellationToken);
-            Dispose(); // Ensure cleanup on cancellation
-        });
-    }
-
-    public Task<LightningInvoice> WaitInvoice(CancellationToken cancellation) // Use passed cancellation
-    {
-        if (_disposed)
-        {
-            _logger.LogWarning($"WaitInvoice called on disposed listener for swap {_swapId}.");
-            return Task.FromCanceled<LightningInvoice>(new CancellationToken(true));
-        }
-
-        _logger.LogInformation($"Waiting for invoice payment notification for swap {_swapId}...");
-
-        // Combine the external cancellation token with the listener's own token
-        // Use CreateLinkedTokenSource for proper cancellation propagation
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationToken, cancellation);
-
-        // Register action for the combined token
-        var registration = linkedCts.Token.Register(() =>
-        {
-            // This will trigger if either the listener's lifetime token OR the WaitInvoice cancellation token fires
-            _logger.LogWarning($"Cancellation detected during WaitInvoice for swap {_swapId}.");
-            _tcs.TrySetCanceled(linkedCts.Token);
-        });
-
-        var waitTask = _tcs.Task;
-
-        // Return a task that continues after waitTask completes (or is cancelled)
-        return waitTask.ContinueWith(task =>
-            {
-                registration.Unregister(); // Clean up the linked token registration
-                registration.Dispose();
-
-                // Check the final status of the TCS task
-                if (task.IsFaulted)
-                {
-                    _logger.LogError(task.Exception?.InnerException ?? task.Exception, $"Error waiting for invoice payment for swap {_swapId}.");
-                    // Rethrow the inner exception if available for better context
-                    throw task.Exception.InnerException ?? task.Exception;
-                }
-
-                if (task.IsCanceled)
-                {
-                    _logger.LogWarning($"WaitInvoice task cancelled for swap {_swapId}.");
-                    // Throw OperationCanceledException with the token that caused cancellation
-                    throw new OperationCanceledException($"WaitInvoice cancelled for swap {_swapId}.", linkedCts.Token);
-                }
-
-                // If completed successfully (TaskStatus.RanToCompletion)
-                _logger.LogInformation($"Invoice payment received or final state reached for swap {_swapId}.");
-                // No need to look up swapId here anymore
-                return task.Result; // Return the paid invoice
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.DenyChildAttach,
-            TaskScheduler.Default); // Ensure sync execution and specify scheduler
-    }
-
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true; // Prevent re-entry
-
-        _logger.LogDebug($"Disposing BoltzInvoiceListener for swap {_swapId}.");
-        // Ensure TCS is completed (cancelled if not already done)
-        _tcs.TrySetCanceled(_cancellationToken.IsCancellationRequested ? _cancellationToken : new CancellationToken(true));
-
-        // Call the cleanup callback provided by the client
-        try
-        {
-            _cleanupCallback(_swapId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"Error during cleanup callback for swap {_swapId}.");
-        }
-    }
-
-    // Method called by BoltzLightningClient when the corresponding invoice is paid
-    public void TriggerInvoicePaid(LightningInvoice paidInvoice)
-    {
-        _logger.LogInformation($"TriggerInvoicePaid called for listener of swap {_swapId}.");
-        _tcs.TrySetResult(paidInvoice);
-    }
-
-    public void TriggerInvoiceFailure()
-    {
-        _logger.LogInformation($"TriggerInvoiceFailure called for listener of swap {_swapId}.");
-        _tcs.TrySetException(new Exception("Invoice payment failed or swap expired."));
     }
 }

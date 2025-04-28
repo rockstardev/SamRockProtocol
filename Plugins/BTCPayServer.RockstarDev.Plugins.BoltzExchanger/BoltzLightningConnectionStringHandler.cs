@@ -17,15 +17,17 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
     private readonly BoltzWebSocketService _webSocketService;
     private readonly ILoggerFactory _loggerFactory;
     private readonly CovClaimDaemon _covClaimDaemon;
+    private readonly EventAggregator _eventAggregator;
 
     // Inject required services
     public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzWebSocketService webSocketService, ILoggerFactory loggerFactory,
-        CovClaimDaemon covClaimDaemon)
+        CovClaimDaemon covClaimDaemon, EventAggregator eventAggregator)
     {
         _httpClientFactory = httpClientFactory;
         _webSocketService = webSocketService;
         _loggerFactory = loggerFactory;
         _covClaimDaemon = covClaimDaemon;
+        _eventAggregator = eventAggregator;
     }
 
     public ILightningClient? Create(string connectionString, Network network, out string? error)
@@ -108,7 +110,7 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
         var logger = _loggerFactory.CreateLogger<BoltzLightningClient>();
 
         // Instantiate the client
-        var client = new BoltzLightningClient(options, httpClient, _webSocketService, logger, _covClaimDaemon);
+        var client = new BoltzLightningClient(options, httpClient, _webSocketService, logger, _covClaimDaemon, _eventAggregator);
 
         error = null;
         return client;

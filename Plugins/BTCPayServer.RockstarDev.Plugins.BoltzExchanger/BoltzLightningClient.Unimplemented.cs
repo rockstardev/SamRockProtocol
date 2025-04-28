@@ -12,14 +12,6 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 // meaningfully implemented or supported by the Boltz reverse swap flow.
 public partial class BoltzLightningClient
 {
-    // Required by ILightningClient - General purpose listener (Not Supported by this client)
-    public Task<ILightningInvoiceListener> Listen(CancellationToken cancellationToken = default)
-    {
-        _logger.LogError("General purpose listening (Listen without paymentHash) is not supported by BoltzLightningClient.");
-        return Task.FromException<ILightningInvoiceListener>(
-            new NotSupportedException("BoltzLightningClient does not support general purpose listening. Use Listen(paymentHash) after CreateInvoice."));
-    }
-
     // Required by ILightningClient (Not Supported by this client)
     public Task<BitcoinAddress> GetDepositAddress(CancellationToken cancellationToken = default)
     {
@@ -104,16 +96,6 @@ public partial class BoltzLightningClient
     {
         _logger.LogDebug("ListPayments (with params) called on Boltz client - returning empty list.");
         return Task.FromResult(Array.Empty<LightningPayment>());
-    }
-
-    public Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = new CancellationToken())
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new CancellationToken())
-    {
-        throw new NotImplementedException();
     }
 
     public Task<LightningInvoice[]> ListInvoices(CancellationToken cancellation = new CancellationToken())
