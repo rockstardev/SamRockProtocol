@@ -69,8 +69,63 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
             _logger.LogInformation("Starting CovClaimDaemon Hosted Service...");
             _stopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+            // Initialize client (assuming fixed URL for now)
+            CovClaimClient = new CovClaimDaemonRestClient(_loggerRestClient, _httpClientFactory, "http://127.0.0.1:35791/covenant");
+
+            bool launchNewProcess = false;
+            using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            using (var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_stopCts.Token, timeoutCts.Token)) // Combine stop and timeout
+            {
+                try
+                {
+                    _logger.LogInformation("Checking if CovClaimDaemon is already running via client call...");
+                    // Use a lightweight method if available, otherwise RegisterCovenant is okay
+                    // Assuming RegisterCovenant returns false if already running/initialized in some way
+                    var registered = await CovClaimClient.RegisterCovenant(
+                        new CovClaimRegisterRequest { ClaimPublicKey = "test_probe" }, // Use a distinct key
+                        linkedCts.Token);
+
+                    if (registered)
+                    {
+                        // This case is ambiguous. Did it register the probe successfully?
+                        // Let's assume for now this means the daemon IS running and ready.
+                        _logger.LogInformation("CovClaimDaemon responded successfully to probe. Attaching.");
+                        _daemonReadyTcs.TrySetResult(true); // Signal readiness
+                        return; // Don't launch new process
+                    }
+                    else
+                    {
+                        // returned false - assuming this means daemon is running but maybe probe failed?
+                        _logger.LogInformation("CovClaimDaemon responded to probe (returned false). Attaching.");
+                        _daemonReadyTcs.TrySetResult(true); // Signal readiness
+                        return; // Don't launch new process
+                    }
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Timeout checking for existing CovClaimDaemon via client. Proceeding to launch.");
+                    launchNewProcess = true;
+                }
+                catch (HttpRequestException httpEx) // Catch specific network/connection errors
+                {
+                    _logger.LogInformation("Network error checking for existing CovClaimDaemon: {Message}. Proceeding to launch.", httpEx.Message);
+                    launchNewProcess = true;
+                }
+                // Let other unexpected exceptions propagate upwards to indicate a real problem
+            }
+
+            if (!launchNewProcess)
+            {
+                // Should not be reachable if logic above is correct, but safeguard.
+                _logger.LogError("Failed to determine daemon status cleanly. Aborting startup.");
+                _daemonReadyTcs.TrySetException(new InvalidOperationException("Could not determine if CovClaimDaemon is running.")); // Signal failure
+                throw new InvalidOperationException("Could not determine if CovClaimDaemon is running.");
+            }
+
+            // ---> Proceed with the existing launch logic <---
             try
             {
+                _logger.LogInformation("Launching new CovClaimDaemon process...");
                 // Ensure data directories exist
                 Directory.CreateDirectory(DataDir);
                 Directory.CreateDirectory(BinDir);
@@ -148,11 +203,16 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
                     _logger.LogInformation("CovClaimDaemon signaled readiness.");
                 }
 
-                CovClaimClient = new CovClaimDaemonRestClient(_loggerRestClient, _httpClientFactory, "http://127.0.0.1:35791/covenant");
+                // Ensure client is initialized if we launched it (it might have been initialized earlier too)
+                // If CovClaimClient requires settings derived AFTER launch (e.g. dynamic port), initialize/update here.
+                if (CovClaimClient == null) // Or re-initialize if needed
+                {
+                    CovClaimClient = new CovClaimDaemonRestClient(_loggerRestClient, _httpClientFactory, "http://127.0.0.1:35791/covenant");
+                }
             }
-            catch (Exception ex)
+            catch (Exception ex) // Catch errors during the LAUNCH sequence
             {
-                _logger.LogError(ex, "Failed to start CovClaimDaemon.");
+                _logger.LogError(ex, "Failed to start CovClaimDaemon process.");
                 _daemonReadyTcs.TrySetException(ex); // Signal failure
                 DisposeProcess(); // Clean up if start fails critically
                 throw; // Re-throw to indicate service startup failure
@@ -227,21 +287,21 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
         // Helper method to check for readiness signal in log lines
         private void CheckForReadinessSignal(string logLine)
         {
-             // Adjust this string based on the *actual* output of your covclaim daemon
-             // Example: "Started API server on: 127.0.0.1:35791"
-             if (logLine.Contains("Started API server on", StringComparison.OrdinalIgnoreCase))
-             {
-                 if (!_daemonReadyTcs.Task.IsCompleted) // Avoid logging multiple times if signal appears in both streams
-                 {
-                     _logger.LogInformation("CovClaimDaemon REST API detected as ready.");
-                 }
-                 _daemonReadyTcs.TrySetResult(true); // OK to call multiple times
-             }
-             // Add checks for specific FATAL error messages here if needed to fail the TCS
-             // else if (logLine.Contains("CRITICAL ERROR PATTERN", StringComparison.OrdinalIgnoreCase))
-             // {
-             //     _daemonReadyTcs.TrySetException(new Exception($"CovClaimDaemon critical error: {logLine}"));
-             // }
+            // Adjust this string based on the *actual* output of your covclaim daemon
+            // Example: "Started API server on: 127.0.0.1:35791"
+            if (logLine.Contains("Started API server on", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!_daemonReadyTcs.Task.IsCompleted) // Avoid logging multiple times if signal appears in both streams
+                {
+                    _logger.LogInformation("CovClaimDaemon REST API detected as ready.");
+                }
+                _daemonReadyTcs.TrySetResult(true); // OK to call multiple times
+            }
+            // Add checks for specific FATAL error messages here if needed to fail the TCS
+            // else if (logLine.Contains("CRITICAL ERROR PATTERN", StringComparison.OrdinalIgnoreCase))
+            // {
+            //     _daemonReadyTcs.TrySetException(new Exception($"CovClaimDaemon critical error: {logLine}"));
+            // }
         }
 
         // --- Helper Methods ---
