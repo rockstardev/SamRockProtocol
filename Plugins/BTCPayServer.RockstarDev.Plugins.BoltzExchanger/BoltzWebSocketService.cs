@@ -30,6 +30,9 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
     // Subscription management: Key = Swap ID, Value = Callback delegate
     private readonly ConcurrentDictionary<string, Func<SwapStatusUpdate, Task>> _swapSubscriptions = new();
 
+    // NEW: Map Swap ID to the URI it was subscribed on
+    private readonly ConcurrentDictionary<string, Uri> _swapIdToUriMap = new();
+
     // Timer for sending keep-alive pings
     private Timer? _pingTimer;
     private readonly TimeSpan _pingInterval = TimeSpan.FromSeconds(30);
@@ -64,6 +67,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
 
         _connections.Clear();
         _swapSubscriptions.Clear();
+        _swapIdToUriMap.Clear();
 
         _logger.LogInformation("Boltz WebSocket Service stopped.");
     }
@@ -97,6 +101,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
 
         _connections.Clear();
         _swapSubscriptions.Clear();
+        _swapIdToUriMap.Clear();
         GC.SuppressFinalize(this);
     }
 
@@ -120,6 +125,11 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
         if (connection != null)
         {
             await SendSubscriptionMessageAsync(connection, new[] { swapId }, "subscribe", cancellationToken);
+            _logger.LogInformation($"Subscribed to swap updates for {swapId} on {wsApiUri}");
+
+            // *** ADD MAPPING HERE ***
+            _swapIdToUriMap[swapId] = wsApiUri;
+            _logger.LogDebug($"Mapped swap {swapId} to URI {wsApiUri}");
         }
         else
         {
@@ -132,15 +142,30 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
     /// <summary>
     /// Unsubscribes from status updates for a specific swap ID.
     /// </summary>
-    public async Task UnsubscribeFromSwapStatusAsync(Uri wsApiUri, string swapId, CancellationToken cancellationToken = default)
+    public async Task UnsubscribeFromSwapStatusAsync(string swapId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(swapId))
+        _logger.LogInformation($"Attempting to unsubscribe from swap ID: {swapId}");
+
+        // *** USE MAPPING TO FIND URI ***
+        if (!_swapIdToUriMap.TryGetValue(swapId, out var wsApiUri))
+        {
+            _logger.LogWarning($"Cannot unsubscribe swap {swapId}: No URI mapping found. Was it ever subscribed?");
+            // Still remove from _swapSubscriptions just in case mapping failed but subscription exists
+            _swapSubscriptions.TryRemove(swapId, out _);
             return;
+        }
 
-        // Remove the local subscription callback first
-        _swapSubscriptions.TryRemove(swapId, out _);
+        // Remove the callback first to prevent race conditions if messages arrive during unsubscribe
+        var removed = _swapSubscriptions.TryRemove(swapId, out _);
+        _swapIdToUriMap.TryRemove(swapId, out _); // Remove mapping regardless of subscription success
 
-        // If a connection exists for this URI, send the unsubscribe message
+        if (!removed)
+        {
+            _logger.LogWarning($"Swap {swapId} was not found in the active subscriptions list during unsubscribe.");
+            // Don't send unsubscribe message if we weren't actually tracking a callback
+            return;
+        }
+
         if (_connections.TryGetValue(wsApiUri, out var connection) && connection.WebSocket.State == WebSocketState.Open)
         {
             await SendSubscriptionMessageAsync(connection, new[] { swapId }, "unsubscribe", cancellationToken);

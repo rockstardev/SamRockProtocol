@@ -89,32 +89,6 @@ public class Leaf
 
 // --- WebSocket DTOs ---
 
-public class WebSocketRequest
-{
-    [JsonPropertyName("op")]
-    public string Operation { get; set; } = string.Empty;
-
-    [JsonPropertyName("channel")]
-    public string Channel { get; set; } = string.Empty;
-
-    [JsonPropertyName("args")]
-    public List<string> Args { get; set; } = new();
-}
-
-public class WebSocketResponse
-{
-    [JsonPropertyName("event")]
-    public string Event { get; set; } = string.Empty; // e.g., "subscribe", "update", "pong"
-
-    [JsonPropertyName("channel")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public string? Channel { get; set; }
-
-    [JsonPropertyName("args")]
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<SwapStatusUpdate>? Args { get; set; }
-}
-
 public class SwapStatusUpdate
 {
     [JsonPropertyName("id")]

@@ -33,7 +33,7 @@ public partial class BoltzLightningClient
     public Task<ILightningInvoiceListener> Listen(CancellationToken cancellation = default)
     {
         // Assumes _eventAggregator and _logger are available
-        var listener = new BoltzListener(this, _eventAggregator, _logger);
+        var listener = new BoltzListener(_boltzExchangerService, _logger);
         _logger.LogDebug("Created new BoltzListener instance.");
         return Task.FromResult<ILightningInvoiceListener>(listener);
     }
@@ -41,22 +41,20 @@ public partial class BoltzLightningClient
     // Internal listener implementation
     private class BoltzListener : ILightningInvoiceListener
     {
-        private readonly BoltzLightningClient _client; // Reference to parent client to access swap data
-        private readonly EventAggregator _eventAggregator;
+        private readonly BoltzExchangerService _service;
         private readonly ILogger _logger;
         private readonly IEventAggregatorSubscription _subscription;
         // Channel to queue IDs of paid swaps received via events
         private readonly Channel<string> _paidSwapIdChannel = Channel.CreateUnbounded<string>();
         private bool _disposed = false;
 
-        public BoltzListener(BoltzLightningClient client, EventAggregator eventAggregator, ILogger logger)
+        public BoltzListener(BoltzExchangerService service, ILogger logger)
         {
-            _client = client;
-            _eventAggregator = eventAggregator;
+            _service = service;
             _logger = logger;
 
             // Subscribe to the simplified paid event
-            _subscription = _eventAggregator.Subscribe<BoltzSwapPaidEvent>(HandlePaidEvent);
+            _subscription = _service.EventAggregator.Subscribe<BoltzSwapPaidEvent>(HandlePaidEvent);
             _logger.LogDebug("BoltzListener subscribed to BoltzSwapPaidEvent.");
         }
 
@@ -91,28 +89,9 @@ public partial class BoltzLightningClient
                  _logger.LogInformation($"BoltzListener received paid SwapId {paidSwapId} from channel.");
 
                 // Now retrieve the actual invoice data from the client's cache
-                if (_client._swapData.TryGetValue(paidSwapId, out var swapDetails) && swapDetails.IsPaid)
+                if (_service.TryGetPaidInvoice(paidSwapId, out var swapDetails) && swapDetails.IsPaid)
                 {
                     _logger.LogInformation($"Found paid invoice details for SwapId {paidSwapId}. Returning invoice.");
-                    
-                    // IMPORTANT: Remove the swap from the cache *after* successfully retrieving it
-                    // to prevent it being returned again by this or another listener.
-                    // This mimics the 'Observed' flag in the Strike example.
-                    if (_client._swapData.TryRemove(paidSwapId, out _))
-                    {
-                        _logger.LogDebug($"Removed SwapId {paidSwapId} from client cache after retrieval.");
-                    }
-                    else
-                    {
-                         _logger.LogWarning($"Failed to remove SwapId {paidSwapId} from client cache after retrieval.");
-                    }
-                    
-                    // Also remove the preimage mapping
-                    if (!string.IsNullOrEmpty(swapDetails.PreimageHash) && _client._preimageHashToSwapId.TryRemove(swapDetails.PreimageHash, out _))
-                    {
-                         _logger.LogDebug($"Removed preimage mapping for SwapId {paidSwapId}.");
-                    }
-
                     return swapDetails.OriginalInvoice; // Return the fully populated invoice
                 }
                 else

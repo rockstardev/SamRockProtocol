@@ -14,20 +14,15 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 public class BoltzLightningConnectionStringHandler : ILightningConnectionStringHandler
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly BoltzWebSocketService _webSocketService;
+    private readonly BoltzExchangerService _service;
     private readonly ILoggerFactory _loggerFactory;
-    private readonly CovClaimDaemon _covClaimDaemon;
-    private readonly EventAggregator _eventAggregator;
 
     // Inject required services
-    public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzWebSocketService webSocketService, ILoggerFactory loggerFactory,
-        CovClaimDaemon covClaimDaemon, EventAggregator eventAggregator)
+    public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzExchangerService service, ILoggerFactory loggerFactory)
     {
         _httpClientFactory = httpClientFactory;
-        _webSocketService = webSocketService;
+        _service = service;
         _loggerFactory = loggerFactory;
-        _covClaimDaemon = covClaimDaemon;
-        _eventAggregator = eventAggregator;
     }
 
     public ILightningClient? Create(string connectionString, Network network, out string? error)
@@ -110,7 +105,7 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
         var logger = _loggerFactory.CreateLogger<BoltzLightningClient>();
 
         // Instantiate the client
-        var client = new BoltzLightningClient(options, httpClient, _webSocketService, logger, _covClaimDaemon, _eventAggregator);
+        var client = new BoltzLightningClient(options, httpClient, _service, logger);
 
         error = null;
         return client;

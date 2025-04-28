@@ -25,6 +25,9 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
         services.AddSingleton<BoltzWebSocketService>();
         services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<BoltzWebSocketService>());
 
+        // Register Singleton Service that maintains state
+        services.AddSingleton<BoltzExchangerService>();
+        
         // Register the CovClaimDaemon 
         services.AddSingleton<CovClaimDaemon>();
         services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<CovClaimDaemon>());
