@@ -437,7 +437,7 @@ ELEMENTS_COOKIE=/home/michael/Git/TypeScript/boltz-backend/docker/regtest/data/c
 ESPLORA_ENDPOINT=https://blockstream.info/liquid/api
 
 # Poll interval for new blocks in seconds
-ESPLORA_POLL_INTERVAL=10
+ESPLORA_POLL_INTERVAL=5
 
 # Max reqs/second for the Esplora endpoint; useful when hitting rate limits
 # Set to 0 to disable

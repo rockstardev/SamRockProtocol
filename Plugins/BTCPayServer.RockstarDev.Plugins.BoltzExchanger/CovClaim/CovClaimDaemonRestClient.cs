@@ -63,25 +63,10 @@ public class CovClaimDaemonRestClient
                 return false;
             }
         }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "HTTP request failed when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
-            return false;
-        }
-        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogError(ex, "Request timed out when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
-            return false; // Handle timeout specifically
-        }
-        catch (TaskCanceledException ex) when (cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogWarning("Request cancelled when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
-            throw; // Re-throw cancellation
-        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "An unexpected error occurred when registering covenant {SwapId} at {ApiUrl}.", requestBody.ClaimPublicKey, _apiUrl);
-            return false;
+            throw;
         }
     }
 }
