@@ -1,7 +1,9 @@
 #nullable enable
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
@@ -14,269 +16,383 @@ using Microsoft.Extensions.Logging;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
-// Singleton service to manage WebSocket connection(s) to Boltz
-public class BoltzWebSocketService : IHostedService, IDisposable
+/// <summary>
+/// Manages WebSocket connections to the Boltz API for real-time swap updates.
+/// Handles message fragmentation, subscriptions, and dispatching updates.
+/// </summary>
+public class BoltzWebSocketService : IHostedService, IAsyncDisposable
 {
-    // Store connections per endpoint URL
-    private readonly ConcurrentDictionary<Uri, WebSocketConnection> _connections = new();
     private readonly ILogger<BoltzWebSocketService> _logger;
-    private readonly ConcurrentDictionary<string, SwapSubscription> _subscriptions = new(); // Key: SwapID
+
+    // Connection management: Key = WebSocket URI
+    private readonly ConcurrentDictionary<Uri, WebSocketConnection> _connections = new();
+
+    // Subscription management: Key = Swap ID, Value = Callback delegate
+    private readonly ConcurrentDictionary<string, Func<SwapStatusUpdate, Task>> _swapSubscriptions = new();
+
+    // Timer for sending keep-alive pings
     private Timer? _pingTimer;
+    private readonly TimeSpan _pingInterval = TimeSpan.FromSeconds(30);
+    private readonly CancellationTokenSource _stoppingCts = new(); // Overall service cancellation
+
+    // Record to hold connection state
+    private record WebSocketConnection(ClientWebSocket WebSocket, Task ListenTask, CancellationTokenSource Cts);
 
     public BoltzWebSocketService(ILogger<BoltzWebSocketService> logger)
     {
         _logger = logger;
     }
 
-    public void Dispose()
-    {
-        StopAsync(CancellationToken.None).Wait(); // Synchronous wait on dispose
-    }
-
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Boltz WebSocket Service starting.");
-        // Defer connection until needed
+        // Combine external cancellation with the service's stopping token
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stoppingCts.Token);
+        StartPingTimer(linkedCts.Token); // Pass linked token
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Boltz WebSocket Service stopping.");
+
+        _stoppingCts.Cancel(); // Signal cancellation to all operations
         _pingTimer?.Dispose();
-        _pingTimer = null;
 
-        var cleanupTasks = _connections.Select(kvp => CleanupWebSocketAsync(kvp.Key, kvp.Value)).ToList();
+        var cleanupTasks = _connections.Keys.ToList().Select(uri => CleanupConnectionAsync(uri, false));
         await Task.WhenAll(cleanupTasks);
+
         _connections.Clear();
-        _subscriptions.Clear();
+        _swapSubscriptions.Clear();
+
+        _logger.LogInformation("Boltz WebSocket Service stopped.");
     }
 
-    // Called by BoltzLightningClient to register interest in a swap
-    public async Task SubscribeToSwapAsync(string swapId, Uri apiUrl, Func<SwapStatusUpdate, Task> onUpdate, CancellationToken cancellationToken = default)
+    public async ValueTask DisposeAsync()
     {
-        if (_subscriptions.TryAdd(swapId, new SwapSubscription(apiUrl, onUpdate)))
+        _pingTimer?.Dispose();
+        _stoppingCts.Cancel();
+        _stoppingCts.Dispose();
+
+        var cleanupTasks = _connections.Values.ToList().Select(conn =>
         {
-            _logger.LogInformation($"Adding subscription for Boltz swap {swapId} via {apiUrl}");
-            var wsUri = GetWebSocketUri(apiUrl);
-            var connection = await EnsureConnectedAsync(wsUri, cancellationToken);
-            if (connection != null)
-            {
-                var subscribeMsg = new WebSocketRequest
-                {
-                    Operation = "subscribe",
-                    Channel = "swap.update",
-                    Args = new List<string> { swapId }
-                };
-                await SendWebSocketMessageAsync(connection, subscribeMsg, cancellationToken);
-            }
-            else
-            {
-                _logger.LogError($"Failed to ensure WebSocket connection for {wsUri} to subscribe to {swapId}");
-                // If connection failed, remove subscription?
-                _subscriptions.TryRemove(swapId, out _);
-                throw new Exception($"Failed to connect to WebSocket endpoint {wsUri}");
-            }
-        }
-        else
-        {
-            _logger.LogWarning($"Subscription request for already tracked swap {swapId}");
-        }
-    }
+            conn.Cts.Cancel(); // Ensure listener stops
+            conn.WebSocket.Dispose();
+            conn.Cts.Dispose();
+            return conn.ListenTask; // Await the listening task completion if needed
+        });
 
-    // Called by BoltzLightningClient when it no longer needs updates
-    public async Task UnsubscribeFromSwapAsync(string swapId, CancellationToken cancellationToken = default)
-    {
-        if (_subscriptions.TryRemove(swapId, out var subscription))
-        {
-            _logger.LogInformation($"Removing subscription for Boltz swap {swapId}");
-            var wsUri = GetWebSocketUri(subscription.ApiUrl);
-            if (_connections.TryGetValue(wsUri, out var connection) && connection.WebSocket.State == WebSocketState.Open)
-            {
-                var unsubscribeMsg = new WebSocketRequest
-                {
-                    Operation = "unsubscribe",
-                    Channel = "swap.update",
-                    Args = new List<string> { swapId }
-                };
-                await SendWebSocketMessageAsync(connection, unsubscribeMsg, cancellationToken);
-            }
-        }
-    }
-
-    // Keep EnsureConnected for internal/listener use? Maybe remove?
-    public void EnsureConnected(CancellationToken cancellationToken) { }
-
-    private static Uri GetWebSocketUri(Uri apiUrl)
-    {
-        var scheme = apiUrl.Scheme == "https" ? "wss" : "ws";
-        return new UriBuilder(scheme, apiUrl.Host, apiUrl.Port, "/v2/ws").Uri;
-    }
-
-    private async Task<WebSocketConnection?> EnsureConnectedAsync(Uri wsUri, CancellationToken cancellationToken)
-    {
-        if (_connections.TryGetValue(wsUri, out var existingConnection))
-        {
-            if (existingConnection.WebSocket.State == WebSocketState.Open || existingConnection.WebSocket.State == WebSocketState.Connecting)
-                return existingConnection;
-
-            _logger.LogWarning(
-                $"Existing WebSocket connection for {wsUri} found in bad state: {existingConnection.WebSocket.State}. Attempting to clean up and reconnect.");
-            await CleanupWebSocketAsync(wsUri, existingConnection);
-            _connections.TryRemove(wsUri, out _); // Remove the old one
-        }
-
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); // Link to request token if needed?
-        var webSocket = new ClientWebSocket();
-        _logger.LogInformation($"Attempting to connect to Boltz WebSocket: {wsUri}");
         try
         {
-            // Configure common headers if necessary (e.g., User-Agent)
-            await webSocket.ConnectAsync(wsUri, cts.Token);
-            _logger.LogInformation($"Connected to Boltz WebSocket: {wsUri}");
-
-            var listenTask = Task.Run(() => ReceiveLoopAsync(webSocket, wsUri, cts.Token), cts.Token); // Don't await here
-            var newConnection = new WebSocketConnection(webSocket, listenTask, cts);
-
-            if (_connections.TryAdd(wsUri, newConnection))
-            {
-                StartPingTimer(); // Ensure ping timer is running if at least one connection is active
-                return newConnection;
-            }
-
-            // Race condition? Another thread added it. Clean up this attempt.
-            _logger.LogWarning($"Race condition: WebSocket connection for {wsUri} added concurrently. Cleaning up duplicate attempt.");
-            await CleanupWebSocketAsync(wsUri, newConnection, false); // Don't remove from dictionary
-            return _connections.TryGetValue(wsUri, out var actualConnection) ? actualConnection : null;
+            await Task.WhenAll(cleanupTasks);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected if tasks were cancelled
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error connecting to Boltz WebSocket: {Uri}", wsUri);
+            _logger.LogError(ex, "Exception during WebSocket connection disposal.");
+        }
+
+        _connections.Clear();
+        _swapSubscriptions.Clear();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Subscribes to status updates for a specific swap ID.
+    /// Ensures a WebSocket connection is established to the necessary endpoint.
+    /// </summary>
+    public async Task SubscribeToSwapStatusAsync(Uri wsApiUri, string swapId, Func<SwapStatusUpdate, Task> onUpdateCallback,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(swapId))
+            throw new ArgumentNullException(nameof(swapId));
+        if (onUpdateCallback == null)
+            throw new ArgumentNullException(nameof(onUpdateCallback));
+
+        // Add or update subscription callback
+        _swapSubscriptions[swapId] = onUpdateCallback;
+
+        // Ensure connection exists and subscribe
+        var connection = await EnsureConnectedAsync(wsApiUri, cancellationToken);
+        if (connection != null)
+        {
+            await SendSubscriptionMessageAsync(connection, new[] { swapId }, "subscribe", cancellationToken);
+        }
+        else
+        {
+            _logger.LogError($"Failed to establish connection to {wsApiUri} for swap {swapId}. Subscription might not be active.");
+            // Optionally remove subscription here or let it retry on next event?
+            // _swapSubscriptions.TryRemove(swapId, out _);
+        }
+    }
+
+    /// <summary>
+    /// Unsubscribes from status updates for a specific swap ID.
+    /// </summary>
+    public async Task UnsubscribeFromSwapStatusAsync(Uri wsApiUri, string swapId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(swapId))
+            return;
+
+        // Remove the local subscription callback first
+        _swapSubscriptions.TryRemove(swapId, out _);
+
+        // If a connection exists for this URI, send the unsubscribe message
+        if (_connections.TryGetValue(wsApiUri, out var connection) && connection.WebSocket.State == WebSocketState.Open)
+        {
+            await SendSubscriptionMessageAsync(connection, new[] { swapId }, "unsubscribe", cancellationToken);
+        }
+
+        // Consider cleanup if no more subscriptions for this URI?
+        // CheckIfConnectionNeeded(wsApiUri);
+    }
+
+    // Ensures a WebSocket connection is established and listening.
+    private async Task<WebSocketConnection?> EnsureConnectedAsync(Uri wsUri, CancellationToken cancellationToken)
+    {
+        // Use combined token for connection attempt
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stoppingCts.Token);
+        var combinedToken = linkedCts.Token;
+
+        if (_connections.TryGetValue(wsUri, out var existingConnection))
+        {
+            if (existingConnection.WebSocket.State == WebSocketState.Open || existingConnection.WebSocket.State == WebSocketState.Connecting)
+            {
+                return existingConnection;
+            }
+            else
+            {
+                _logger.LogWarning(
+                    $"Existing connection to {wsUri} found in state {existingConnection.WebSocket.State}. Attempting to clean up and reconnect.");
+                await CleanupConnectionAsync(wsUri, true);
+            }
+        }
+
+        _logger.LogInformation($"Attempting to connect to Boltz WebSocket: {wsUri}");
+        var webSocket = new ClientWebSocket();
+        webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(60); // Configure keep-alive
+
+        try
+        {
+            await webSocket.ConnectAsync(wsUri, combinedToken);
+            _logger.LogInformation($"Connected to Boltz WebSocket: {wsUri}");
+
+            var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(_stoppingCts.Token); // Link new CTS to overall stopping token
+            Task listenTask = null!; // Declare beforehand
+            var newConnection = new WebSocketConnection(webSocket, null!, connectionCts); // Temp assign Task
+
+            // Assign the listen task *after* the connection object is created
+            // Pass the connection object itself to the listener loop
+            listenTask = Task.Run(() => ReceiveLoopAsync(newConnection, wsUri), connectionCts.Token);
+
+            // Update the connection record with the actual listen task
+            newConnection = newConnection with { ListenTask = listenTask };
+
+            if (_connections.TryAdd(wsUri, newConnection))
+            {
+                _logger.LogInformation($"WebSocket connection added for {wsUri}.");
+                StartPingTimer(combinedToken); // Ensure ping timer is running
+                return newConnection;
+            }
+            else
+            {
+                _logger.LogWarning($"Failed to add new connection for {wsUri} (already added?). Cleaning up.");
+                await CleanupConnectionAsync(wsUri, newConnection, false); // Cleanup without removing from dict as it wasn't added
+                return _connections.TryGetValue(wsUri, out var raceConditionWinner) ? raceConditionWinner : null; // Return the one that won the race
+            }
+        }
+        catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
+        {
+            _logger.LogWarning($"Connection attempt to {wsUri} cancelled.");
             webSocket.Dispose();
-            cts.Dispose();
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Failed to connect to Boltz WebSocket: {wsUri}");
+            webSocket.Dispose();
             return null;
         }
     }
 
-    private async Task ReceiveLoopAsync(ClientWebSocket ws, Uri wsUri, CancellationToken cancellationToken)
+    // The core loop receiving messages for a single connection.
+    private async Task ReceiveLoopAsync(WebSocketConnection connection, Uri wsUri)
     {
-        var buffer = new ArraySegment<byte>(new byte[4096]);
+        var buffer = new byte[8192]; // Increased buffer size
+        var connectionId = connection.WebSocket.GetHashCode(); // For logging
+        var receiveCts = connection.Cts; // Use the CancellationTokenSource specific to this connection
+
+        _logger.LogDebug($"ReceiveLoopAsync started for {wsUri} (ID: {connectionId}).");
+
         try
         {
-            while (ws.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+            while (connection.WebSocket.State == WebSocketState.Open && !receiveCts.IsCancellationRequested)
+            {
+                using var ms = new MemoryStream();
+                WebSocketReceiveResult result;
+
                 try
                 {
-                    var result = await ws.ReceiveAsync(buffer, cancellationToken);
-                    if (result.MessageType == WebSocketMessageType.Close)
+                    do
                     {
-                        _logger.LogInformation($"Boltz WebSocket connection closed by server: {wsUri}");
-                        break;
+                        var segment = new ArraySegment<byte>(buffer);
+                        result = await connection.WebSocket.ReceiveAsync(segment, receiveCts.Token);
+
+                        if (receiveCts.Token.IsCancellationRequested) break;
+
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            _logger.LogInformation(
+                                $"WS {wsUri} (ID: {connectionId}) received close: {result.CloseStatus?.ToString()} / {result.CloseStatusDescription}");
+                            // Don't cleanup here, let the outer loop detect state change or cancellation
+                            return; // Exit loop gracefully
+                        }
+
+                        if (result.MessageType == WebSocketMessageType.Binary)
+                        {
+                            _logger.LogWarning($"WS {wsUri} (ID: {connectionId}) received unexpected binary message. Draining.");
+                            while (!result.EndOfMessage && !receiveCts.Token.IsCancellationRequested)
+                            {
+                                result = await connection.WebSocket.ReceiveAsync(segment, receiveCts.Token);
+                                if (result.MessageType == WebSocketMessageType.Close) goto CloseReceivedInBinaryDrain; // Handle close during drain
+                            }
+
+                            goto NextMessageFragmentLoop;
+                        }
+
+                        if (result.Count > 0)
+                        {
+                            await ms.WriteAsync(buffer, 0, result.Count, receiveCts.Token);
+                        }
+                    } while (!result.EndOfMessage && !receiveCts.Token.IsCancellationRequested);
+
+                    if (receiveCts.Token.IsCancellationRequested) break; // Check again after loop
+
+                    // Process the complete message if we received text data
+                    if (ms.Length > 0 && result.MessageType == WebSocketMessageType.Text) // Check type just in case
+                    {
+                        ms.Position = 0;
+                        using var reader = new StreamReader(ms, Encoding.UTF8);
+                        var completeMessage = await reader.ReadToEndAsync(receiveCts.Token);
+
+                        // Handle message processing asynchronously without blocking the receive loop
+                        _ = Task.Run(() => HandleWebSocketMessageAsync(completeMessage), receiveCts.Token);
                     }
 
-                    if (buffer.Array != null)
+                    CloseReceivedInBinaryDrain:
+                    if (result.MessageType == WebSocketMessageType.Close) // Check if we exited drain loop due to Close
                     {
-                        var message = Encoding.UTF8.GetString(buffer.Array, 0, result.Count);
-                        _logger.LogDebug($"Received message from Boltz WS ({wsUri}): {message}");
-                        HandleWebSocketMessage(message);
+                        _logger.LogInformation(
+                            $"WS {wsUri} (ID: {connectionId}) received close during binary drain: {result.CloseStatus?.ToString()} / {result.CloseStatusDescription}");
+                        return; // Exit loop gracefully
                     }
+
+                    NextMessageFragmentLoop:
+                    continue;
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (receiveCts.IsCancellationRequested)
                 {
-                    _logger.LogInformation($"Boltz WebSocket listener cancelled: {wsUri}");
-                    break;
+                    _logger.LogDebug($"Receive operation cancelled for {wsUri} (ID: {connectionId}).");
+                    break; // Exit main while loop
                 }
                 catch (WebSocketException wsex) when (wsex.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                 {
-                    _logger.LogWarning($"Boltz WebSocket connection closed prematurely: {wsUri}");
-                    break; // Let cleanup handle reconnect attempt if necessary
+                    _logger.LogWarning(wsex, $"WebSocket connection closed prematurely for {wsUri} (ID: {connectionId}).");
+                    break; // Exit main while loop, let cleanup handle
+                }
+                catch (WebSocketException wsex)
+                {
+                    _logger.LogError(wsex, $"WebSocketException in ReceiveLoopAsync for {wsUri} (ID: {connectionId}).");
+                    break; // Exit main while loop, let cleanup handle
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, $"Error receiving from Boltz WebSocket {wsUri}.");
-                    break; // Let cleanup handle reconnect attempt if necessary
+                    if (ex is ObjectDisposedException ode && ode.ObjectName == typeof(ClientWebSocket).FullName)
+                    {
+                        _logger.LogWarning($"WebSocket was disposed during ReceiveLoopAsync for {wsUri} (ID: {connectionId}). Likely closed externally.");
+                    }
+                    else
+                    {
+                        _logger.LogError(ex, $"Unexpected error in ReceiveLoopAsync for {wsUri} (ID: {connectionId}).");
+                    }
+
+                    break; // Exit main while loop, let cleanup handle
                 }
+                // MemoryStream 'ms' disposed by using statement here
+            }
         }
         finally
         {
-            _logger.LogInformation($"Exited Boltz WebSocket receive loop for {wsUri}.");
-            // Clean up the specific connection when the loop exits
-            if (_connections.TryGetValue(wsUri, out var connection) && connection.WebSocket == ws)
-            {
-                await CleanupWebSocketAsync(wsUri, connection);
-                _connections.TryRemove(wsUri, out _);
-                StopPingTimerIfIdle();
-                // TODO: Implement retry logic here if needed?
-                // Maybe resubscribe active subscriptions?
-            }
+            _logger.LogDebug($"ReceiveLoopAsync finished for {wsUri} (ID: {connectionId}). State: {connection.WebSocket.State}");
+            // Ensure connection is cleaned up if the loop exits unexpectedly or normally after close/cancel
+            await CleanupConnectionAsync(wsUri, connection, true);
         }
     }
 
-    private void HandleWebSocketMessage(string message)
+    // Parses the message and dispatches swap updates to subscribers.
+    private async Task HandleWebSocketMessageAsync(string message)
     {
         try
         {
-            // Parse the message generically first
-            var jsonNode = JsonNode.Parse(message);
-            var eventType = jsonNode?["event"]?.GetValue<string>();
+            using var jsonDoc = JsonDocument.Parse(message);
+            var root = jsonDoc.RootElement;
 
-            if (eventType == "update")
+            if (!root.TryGetProperty("event", out var eventElement) || eventElement.ValueKind != JsonValueKind.String)
+                return; // Ignore messages without a string event property
+
+            var eventType = eventElement.GetString();
+
+            switch (eventType)
             {
-                var argsNode = jsonNode?["args"]?.AsArray();
-                if (argsNode != null)
-                {
-                    foreach (var argNode in argsNode)
+                case "update":
+                    if (root.TryGetProperty("args", out var argsElement) && argsElement.ValueKind == JsonValueKind.Array && argsElement.GetArrayLength() > 0)
                     {
-                        // Deserialize each argument in the array as SwapStatusUpdate
-                        // Use try-catch for individual deserialization robustness
-                        try
+                        // Deserialize the first argument which should be the SwapStatusUpdate
+                        var updateData = argsElement[0].Deserialize<SwapStatusUpdate>();
+                        if (updateData?.Id != null)
                         {
-                            var update = argNode?.Deserialize<SwapStatusUpdate>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                            if (update != null && _subscriptions.TryGetValue(update.Id, out var subscription))
+                            if (_swapSubscriptions.TryGetValue(updateData.Id, out var callback))
                             {
-                                _logger.LogInformation($"Received status update for swap {update.Id}: {update.Status}");
-                                // Don't block the receive loop
-                                _ = Task.Run(async () => await subscription.Callback(update));
+                                try
+                                {
+                                    await callback(updateData);
+                                }
+                                catch (Exception callbackEx)
+                                {
+                                    _logger.LogError(callbackEx, $"Error executing callback for swap update {updateData.Id}");
+                                }
                             }
-                            else if (update != null)
-                            {
-                                _logger.LogDebug($"Received update for unsubscribed swap {update.Id}");
-                            }
+                            // else: No active subscription for this swap ID, just ignore.
                         }
-                        catch (JsonException updateEx)
+                        else
                         {
-                            _logger.LogError(updateEx, $"Failed to deserialize update argument: {argNode?.ToJsonString()}");
+                            _logger.LogWarning($"Received swap update message with missing/invalid data: {message}");
                         }
                     }
-                }
-            }
-            else if (eventType == "pong")
-            {
-                _logger.LogDebug("Received pong from Boltz WS");
-            }
-            else if (eventType == "subscribe")
-            {
-                // Handle subscribe confirmation - args is an array of strings (swap IDs)
-                var argsArray = jsonNode?["args"]?.AsArray();
-                var subscribedIds = argsArray?.Select(node => node?.GetValue<string>() ?? string.Empty).Where(id => !string.IsNullOrEmpty(id));
-                _logger.LogInformation(
-                    $"Subscription confirmed by Boltz WS for IDs: {string.Join(',', subscribedIds ?? Enumerable.Empty<string>())}");
-            }
-            else if (eventType == "unsubscribe")
-            {
-                // Handle unsubscribe confirmation - args might be empty or contain remaining IDs (strings)
-                var argsArray = jsonNode?["args"]?.AsArray();
-                var remainingIds = argsArray?.Select(node => node?.GetValue<string>() ?? string.Empty).Where(id => !string.IsNullOrEmpty(id));
-                _logger.LogInformation(
-                    $"Unsubscription confirmed by Boltz WS. Remaining Args: {string.Join(',', remainingIds ?? Enumerable.Empty<string>())}");
-            }
-            else if (eventType == "error")
-            {
-                _logger.LogError($"Received error from Boltz WS: {message}");
-            }
-            // Add handling for other potential event types if necessary
-            else
-            {
-                _logger.LogWarning($"Received unhandled Boltz WS event type '{eventType}': {message}");
+
+                    break;
+
+                case "pong":
+                    _logger.LogDebug("Received pong from Boltz WS.");
+                    break;
+
+                case "subscribe":
+                case "unsubscribe":
+                    // Confirmation messages - log for diagnostics
+                    var args = root.TryGetProperty("args", out var argsArr) ? string.Join(',', argsArr.EnumerateArray().Select(a => a.ToString())) : "<none>";
+                    _logger.LogInformation($"Received '{eventType}' confirmation from Boltz WS. Args: [{args}]");
+                    break;
+
+                case "error":
+                    _logger.LogError($"Received error message from Boltz WS: {message}");
+                    break;
+
+                default:
+                    _logger.LogWarning($"Received unhandled Boltz WS event type '{eventType}': {message}");
+                    break;
             }
         }
         catch (JsonException jex)
@@ -289,46 +405,156 @@ public class BoltzWebSocketService : IHostedService, IDisposable
         }
     }
 
-    private async Task SendWebSocketMessageAsync(WebSocketConnection connection, object messageObject, CancellationToken cancellationToken)
+    // Sends a message (subscribe/unsubscribe) to the WebSocket.
+    private async Task SendSubscriptionMessageAsync(WebSocketConnection connection, IEnumerable<string> swapIds, string operation,
+        CancellationToken cancellationToken)
+    {
+        var message = new
+        {
+            op = operation,
+            channel = "swap.update",
+            args = swapIds
+        };
+        await SendWebSocketMessageInternalAsync(connection, message, cancellationToken);
+    }
+
+    // Sends a ping message.
+    private async Task SendPingAsync(WebSocketConnection connection, CancellationToken cancellationToken)
+    {
+        var message = new { op = "ping" };
+        await SendWebSocketMessageInternalAsync(connection, message, cancellationToken);
+    }
+
+    // Internal method to serialize and send any message object.
+    private async Task SendWebSocketMessageInternalAsync(WebSocketConnection connection, object messageObject, CancellationToken cancellationToken)
     {
         if (connection.WebSocket.State != WebSocketState.Open)
         {
-            _logger.LogWarning($"Attempted to send WebSocket message while not connected or in invalid state ({connection.WebSocket.State}).");
-            return; // Or throw?
+            _logger.LogWarning(
+                $"Attempted to send WebSocket message while not connected or in invalid state ({connection.WebSocket.State}). Message: {JsonSerializer.Serialize(messageObject)}");
+            return;
         }
 
         try
         {
-            var message = JsonSerializer.Serialize(messageObject);
-            _logger.LogDebug($"Sending message to Boltz WS ({connection.WebSocket.SubProtocol}): {message}"); // SubProtocol might not be set
-            var bytes = Encoding.UTF8.GetBytes(message);
-            // Use the connection's CancellationTokenSource for sending, linking to the operation token?
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(connection.Cts.Token, cancellationToken);
-            await connection.WebSocket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, linkedCts.Token);
+            var messageJson = JsonSerializer.Serialize(messageObject);
+            var messageBytes = Encoding.UTF8.GetBytes(messageJson);
+            var segment = new ArraySegment<byte>(messageBytes);
+
+            // Use combined token for send operation
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, connection.Cts.Token, _stoppingCts.Token);
+
+            _logger.LogDebug($"Sending WS message: {messageJson}");
+            await connection.WebSocket.SendAsync(segment, WebSocketMessageType.Text, true, linkedCts.Token);
         }
-        catch (Exception ex) when (ex is ObjectDisposedException || ex is WebSocketException || ex is OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested || connection.Cts.IsCancellationRequested ||
+                                                 _stoppingCts.IsCancellationRequested)
         {
-            _logger.LogWarning(ex, $"Failed to send message to Boltz WebSocket ({connection.WebSocket.CloseStatusDescription}), likely connection issue.");
-            // Trigger cleanup for this specific connection
-            await CleanupWebSocketAsync(_connections.FirstOrDefault(kv => kv.Value == connection).Key, connection); // Need to find Uri
+            _logger.LogWarning("WebSocket send operation cancelled.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error sending message to Boltz WebSocket.");
-            // Potentially trigger cleanup
-            await CleanupWebSocketAsync(_connections.FirstOrDefault(kv => kv.Value == connection).Key, connection);
+            _logger.LogError(ex, $"Error sending WebSocket message: {JsonSerializer.Serialize(messageObject)}");
+            // Consider cleaning up connection on send failure?
+            // await CleanupConnectionAsync(GetUriForConnection(connection), connection);
         }
     }
 
-    private void StartPingTimer()
+    // Cleans up a single WebSocket connection.
+    private async Task CleanupConnectionAsync(Uri wsUri, bool removeFromDictionary = true)
     {
-        if (_pingTimer == null)
+        if (_connections.TryGetValue(wsUri, out var connection))
+        {
+            await CleanupConnectionAsync(wsUri, connection, removeFromDictionary);
+        }
+    }
+
+    private async Task CleanupConnectionAsync(Uri wsUri, WebSocketConnection connection, bool removeFromDictionary = true)
+    {
+        if (connection == null) return;
+
+        if (removeFromDictionary)
+        {
+            _connections.TryRemove(wsUri, out _);
+            _logger.LogDebug($"Removed connection entry for {wsUri}.");
+        }
+
+        // Signal cancellation *before* closing
+        if (!connection.Cts.IsCancellationRequested)
+        {
+            try { connection.Cts.Cancel(); }
+            catch (ObjectDisposedException)
+            {
+                /* Already disposed */
+            }
+        }
+
+        // Close the WebSocket gracefully if possible
+        if (connection.WebSocket.State == WebSocketState.Open || connection.WebSocket.State == WebSocketState.CloseReceived)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)); // Timeout for close
+                await connection.WebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Client closing connection", cts.Token);
+                _logger.LogDebug($"WebSocket closed gracefully for {wsUri}.");
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning($"WebSocket close timed out for {wsUri}. Aborting.");
+                connection.WebSocket.Abort();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Exception during WebSocket graceful close for {wsUri}. Aborting.");
+                connection.WebSocket.Abort(); // Ensure closed on error
+            }
+        }
+        else if (connection.WebSocket.State != WebSocketState.Closed) // If not open/closeReceived and not already closed, Abort
+        {
+            _logger.LogWarning($"WebSocket state for {wsUri} is {connection.WebSocket.State}. Aborting connection.");
+            connection.WebSocket.Abort();
+        }
+
+        // Dispose resources
+        connection.WebSocket.Dispose();
+        try { connection.Cts.Dispose(); }
+        catch (ObjectDisposedException)
+        {
+            /* Already disposed */
+        }
+
+        // Ensure listener task completes (optional, might already be done due to cancellation/close)
+        try
+        {
+            if (connection.ListenTask != null && !connection.ListenTask.IsCompleted)
+            {
+                await connection.ListenTask.WaitAsync(TimeSpan.FromSeconds(2)); // Wait briefly
+            }
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning($"Listener task for {wsUri} did not complete quickly after cleanup signal.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error waiting for listener task completion for {wsUri}");
+        }
+
+        StopPingTimerIfIdle();
+        _logger.LogInformation($"Cleaned up connection for {wsUri}.");
+    }
+
+    // Starts the ping timer if not already running and connections exist.
+    private void StartPingTimer(CancellationToken cancellationToken)
+    {
+        if (_pingTimer == null && !_connections.IsEmpty)
         {
             _logger.LogInformation("Starting Boltz WebSocket ping timer.");
-            _pingTimer = new Timer(async _ => await PingConnectionsAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            _pingTimer = new Timer(async _ => await PingConnectionsAsync(cancellationToken), null, _pingInterval, _pingInterval);
         }
     }
 
+    // Stops the ping timer if running and no connections remain.
     private void StopPingTimerIfIdle()
     {
         if (_pingTimer != null && _connections.IsEmpty)
@@ -339,73 +565,49 @@ public class BoltzWebSocketService : IHostedService, IDisposable
         }
     }
 
-    private async Task PingConnectionsAsync()
+    // Sends a ping to all active connections.
+    private async Task PingConnectionsAsync(CancellationToken cancellationToken)
     {
-        var pingMsg = new { op = "ping" };
-        foreach (var kvp in _connections)
+        if (cancellationToken.IsCancellationRequested) return;
+
+        var activeConnections = _connections.ToList(); // Copy to avoid modification during iteration
+        _logger.LogDebug($"Pinging {activeConnections.Count} active Boltz WebSocket connections.");
+
+        foreach (var kvp in activeConnections)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
             if (kvp.Value.WebSocket.State == WebSocketState.Open)
             {
-                _logger.LogDebug($"Pinging Boltz WebSocket: {kvp.Key}");
-                // Use a short timeout for ping send
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                await SendWebSocketMessageAsync(kvp.Value, pingMsg, cts.Token);
-            }
-    }
-
-    private async Task CleanupWebSocketAsync(Uri? wsUri, WebSocketConnection connection, bool removeFromDictionary = true)
-    {
-        if (connection == null) return;
-
-        // Signal cancellation to listening task and send operations
-        if (!connection.Cts.IsCancellationRequested)
-            try { connection.Cts.Cancel(); }
-            catch (ObjectDisposedException)
-            {
-                /* Already disposed */
-            }
-
-        if (connection.WebSocket != null)
-        {
-            if (connection.WebSocket.State == WebSocketState.Open || connection.WebSocket.State == WebSocketState.CloseReceived)
-            {
-                _logger.LogDebug($"Closing Boltz WebSocket connection: {wsUri?.ToString() ?? "Unknown"}");
                 try
                 {
-                    // Use a short timeout for closing
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                    await connection.WebSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "Service stopping", cts.Token);
-                    // Wait for the receive loop to finish after closing output
-                    // await connection.ListenTask; // This might deadlock if CloseOutputAsync hangs
+                    // Use a short timeout specific to the ping send operation
+                    using var pingTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    pingTimeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+                    await SendPingAsync(kvp.Value, pingTimeoutCts.Token);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogDebug("Ping loop cancelled.");
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, $"Exception during WebSocket close for {wsUri?.ToString() ?? "Unknown"}.");
+                    _logger.LogError(ex, $"Error sending ping to {kvp.Key}");
+                    // Optionally cleanup connection if ping fails repeatedly?
                 }
             }
-
-            try { connection.WebSocket.Dispose(); }
-            catch (ObjectDisposedException)
+            else
             {
-                /* Already disposed */
+                _logger.LogWarning($"Connection to {kvp.Key} is not open ({kvp.Value.WebSocket.State}) during ping. Cleaning up.");
+                await CleanupConnectionAsync(kvp.Key, kvp.Value, true); // Cleanup stale connection found during ping
             }
         }
-
-        try { connection.Cts.Dispose(); }
-        catch (ObjectDisposedException)
-        {
-            /* Already disposed */
-        }
-
-        if (removeFromDictionary && wsUri != null)
-        {
-            _connections.TryRemove(wsUri, out _);
-            StopPingTimerIfIdle();
-        }
-
-        _logger.LogDebug($"Cleaned up WebSocket resources for {wsUri?.ToString() ?? "Unknown"}");
     }
 
-    private record WebSocketConnection(ClientWebSocket WebSocket, Task ListenTask, CancellationTokenSource Cts);
-
-    private record SwapSubscription(Uri ApiUrl, Func<SwapStatusUpdate, Task> Callback);
+    // Helper to find URI - consider removing if only used in cleanup
+    // private Uri? GetUriForConnection(WebSocketConnection connection)
+    // {
+    //     if (connection == null) return null;
+    //     return _connections.FirstOrDefault(kv => kv.Value == connection).Key;
+    // }
 }

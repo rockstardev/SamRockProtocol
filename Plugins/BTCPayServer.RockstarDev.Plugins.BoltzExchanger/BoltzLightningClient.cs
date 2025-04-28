@@ -158,7 +158,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             _preimageHashToSwapId.TryAdd(preimageHashHex, swapResponse.Id);
 
             // Subscribe via WebSocket
-            await _webSocketService.SubscribeToSwapAsync(swapResponse.Id, _options.ApiUrl, HandleSwapUpdate, cancellationTokenDebug);
+            await _webSocketService.SubscribeToSwapStatusAsync(WebSocketUri(), swapResponse.Id, HandleSwapUpdate, cancellationTokenDebug);
 
             return invoice;
         }
@@ -209,7 +209,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             _logger.LogDebug($"Removed preimage hash mapping for cancelled swap {swapId}.");
 
         // Unsubscribe from WebSocket updates for this swap ID
-        await _webSocketService.UnsubscribeFromSwapAsync(swapId, cancellationToken);
+        await _webSocketService.UnsubscribeFromSwapStatusAsync(WebSocketUri(), swapId, cancellationToken);
     }
 
     public Task<ILightningInvoiceListener> Listen(string paymentHash, CancellationToken cancellationToken = default)
@@ -312,7 +312,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
                 // Once paid, we can unsubscribe from updates for this swap
                 // Use CancellationToken.None as this is a background task
-                await _webSocketService.UnsubscribeFromSwapAsync(swap.Id, CancellationToken.None);
+                await _webSocketService.UnsubscribeFromSwapStatusAsync(WebSocketUri(), swap.Id, CancellationToken.None);
             }
             else if (IsFailedStatus(update.Status))
             {
@@ -323,7 +323,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 if (_activeListeners.TryGetValue(swap.Id, out var listener)) listener.TriggerInvoiceFailure(); // Signal failure to the listener
 
                 // Unsubscribe on failure too
-                await _webSocketService.UnsubscribeFromSwapAsync(swap.Id, CancellationToken.None);
+                await _webSocketService.UnsubscribeFromSwapStatusAsync(WebSocketUri(), swap.Id, CancellationToken.None);
                 _swapData.TryRemove(swap.Id, out _); // Clean up failed swap data?
                 _preimageHashToSwapId.TryRemove(swap.PreimageHash, out _);
             }
@@ -332,6 +332,13 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         {
             _logger.LogWarning($"Received status update for unknown or removed swap ID: {update.Id}");
         }
+    }
+
+    private Uri WebSocketUri()
+    {
+        var str = _options.ApiUrl.ToString().Replace("http", "ws") + "/v2/ws";
+        str = str.Replace("//v2/ws", "/v2/ws"); // handle base URL with trailing slash
+        return new Uri(str);
     }
 
     private bool IsFailedStatus(string? status)
