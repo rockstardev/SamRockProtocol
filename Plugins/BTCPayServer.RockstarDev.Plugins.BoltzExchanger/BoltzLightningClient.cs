@@ -83,7 +83,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
                 PreimageHash = preimageHashHex,
                 ClaimPublicKey = claimPrivateKey.PubKey.ToHex() // Provide the public key for the claim script
-                // Add Address for claim?
                 // Description? req.Description / req.DescriptionHash
             };
 
@@ -123,7 +122,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 Preimage = preimageHashHex // Store hash initially, actual preimage only on payment
             };
 
-            await _boltzExchangerService.InvoiceCreatedThroughSwap(invoice, swapResponse, preimage, preimageHashHex, claimPrivateKey, 
+            await _boltzExchangerService.InvoiceCreatedThroughSwap(invoice, request, swapResponse, preimage, preimageHashHex, claimPrivateKey, 
                 WebSocketUri(), cancellationTokenDebug);
 
             return invoice;

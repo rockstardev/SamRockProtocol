@@ -38,13 +38,13 @@ public class BoltzExchangerService : IDisposable
         _eventAggregator = eventAggregator;
         _logger = logger;
     }
-    
+
     public void Dispose()
     {
         _swapData.Clear();
         _preimageHashToSwapId.Clear();
     }
-    
+
     // Internal cache for preimage -> swap ID mapping for lookups
     private readonly ConcurrentDictionary<string, string> _preimageHashToSwapId = new();
     private readonly ConcurrentDictionary<string, SwapData> _swapData = new(); // Key: Swap ID
@@ -56,44 +56,33 @@ public class BoltzExchangerService : IDisposable
         public required byte[] Preimage { get; init; } // Store the preimage
         public required string PreimageHash { get; init; }
         public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
+        public CreateReverseSwapRequest SwapRequest { get; set; }
         public required CreateReverseSwapResponse SwapResponse { get; init; } // Store the original swap response
         public SwapStatusUpdate? LastStatusUpdate { get; set; }
         public Key PrivateKey { get; set; }
         public bool IsPaid { get; set; } // Flag indicating if listener was notified
     }
 
-    public async Task InvoiceCreatedThroughSwap(LightningInvoice invoice, CreateReverseSwapResponse swapResponse, byte[] preimage, string preimageHashHex, 
+    public async Task InvoiceCreatedThroughSwap(LightningInvoice invoice, CreateReverseSwapRequest req, CreateReverseSwapResponse resp,
+        byte[] preimage, string preimageHashHex,
         Key claimPrivateKey, Uri websocketUri, CancellationToken cancellationToken = default)
     {
-        // 5. Store Swap Data and Subscribe to Updates
-        // https://docs.boltz.exchange/api/claim-covenants
-        var restClient = _covClaimDaemon.CovClaimClient;
-        var preimageHex = Convert.ToHexString(preimage).ToLowerInvariant(); // Convert preimage bytes to hex
-        await restClient.RegisterCovenant(new CovClaimRegisterRequest
+        _swapData.TryAdd(resp.Id, new SwapData
         {
-            Address = swapResponse.LockupAddress, 
-            Preimage = preimageHex, 
-            Tree = swapResponse.SwapTree, // Pass the tree received from Boltz directly
-            BlindingKey = swapResponse.BlindingKey, 
-            ClaimPublicKey = claimPrivateKey.PubKey.ToHex(),
-            RefundPublicKey = swapResponse.RefundPublicKey
-        }, cancellationToken);
-
-        _swapData.TryAdd(swapResponse.Id, new SwapData
-        {
-            Id = swapResponse.Id,
+            Id = resp.Id,
             Preimage = preimage,
             PreimageHash = preimageHashHex,
             OriginalInvoice = invoice,
-            SwapResponse = swapResponse,
+            SwapRequest = req,
+            SwapResponse = resp,
             PrivateKey = claimPrivateKey,
             LastStatusUpdate = null,
             IsPaid = false
         });
-        _preimageHashToSwapId.TryAdd(preimageHashHex, swapResponse.Id);
+        _preimageHashToSwapId.TryAdd(preimageHashHex, resp.Id);
 
         // Subscribe via WebSocket
-        await _webSocketService.SubscribeToSwapStatusAsync(websocketUri, swapResponse.Id, HandleSwapUpdate, cancellationToken);
+        await _webSocketService.SubscribeToSwapStatusAsync(websocketUri, resp.Id, HandleSwapUpdate, cancellationToken);
     }
 
     public async Task CancelInvoice(Uri websocketUri, string invoiceId, CancellationToken cancellationToken)
@@ -136,7 +125,8 @@ public class BoltzExchangerService : IDisposable
     }
 
     public async Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new CancellationToken())
-    { var preimageHashStr = paymentHash.ToString();
+    {
+        var preimageHashStr = paymentHash.ToString();
         if (_preimageHashToSwapId.TryGetValue(preimageHashStr, out var swapId))
         {
             if (_swapData.TryGetValue(swapId, out var swapDetails))
@@ -196,7 +186,7 @@ public class BoltzExchangerService : IDisposable
 
                 // Invoke the claimer to claim the swap
                 string? transactionHex = await InvokeClaimerForPaidSwap(swap);
-                
+
                 if (!string.IsNullOrEmpty(transactionHex))
                 {
                     _logger.LogInformation($"Successfully obtained transaction hex for swap {swap.Id}: {transactionHex}");
@@ -253,7 +243,7 @@ public class BoltzExchangerService : IDisposable
                 $"--swap-tree", "'"+ JsonSerializer.Serialize(swapResponse.SwapTree) +"'",
                 $"--lockup-address", swapResponse.LockupAddress,
                 $"--refund-public-key", swapResponse.RefundPublicKey,
-                $"--address", swapResponse.LockupAddress, // Using lockup address as the destination
+                $"--address", swap.SwapRequest.Address,
                 $"--blinding-key", swapResponse.BlindingKey ?? string.Empty
             };
             
@@ -297,7 +287,7 @@ public class BoltzExchangerService : IDisposable
         {
             _logger.LogError(ex, $"Error claiming swap {swap.Id}");
         }
-        
+
         return null;
     }
 
