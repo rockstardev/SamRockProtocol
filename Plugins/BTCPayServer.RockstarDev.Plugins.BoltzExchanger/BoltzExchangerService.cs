@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +24,7 @@ public class BoltzExchangerService : IDisposable
     private readonly BoltzWebSocketService _webSocketService;
     private readonly CovClaimDaemon _covClaimDaemon;
     private readonly Microsoft.Extensions.Options.IOptions<DataDirectories> _dataDirectories;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly EventAggregator _eventAggregator;
     public EventAggregator EventAggregator => _eventAggregator;
     private readonly ILogger<BoltzLightningClient> _logger;
@@ -29,12 +33,14 @@ public class BoltzExchangerService : IDisposable
         BoltzWebSocketService webSocketService,
         CovClaimDaemon covClaimDaemon,
         Microsoft.Extensions.Options.IOptions<DataDirectories> dataDirectories,
+        IHttpClientFactory httpClientFactory,
         EventAggregator eventAggregator,
         ILogger<BoltzLightningClient> logger)
     {
         _webSocketService = webSocketService;
         _covClaimDaemon = covClaimDaemon;
         _dataDirectories = dataDirectories;
+        _httpClientFactory = httpClientFactory;
         _eventAggregator = eventAggregator;
         _logger = logger;
     }
@@ -190,7 +196,18 @@ public class BoltzExchangerService : IDisposable
                 if (!string.IsNullOrEmpty(transactionHex))
                 {
                     _logger.LogInformation($"Successfully obtained transaction hex for swap {swap.Id}: {transactionHex}");
-                    // You can store or use this transaction hex if needed
+                    
+                    // Broadcast the transaction to Boltz
+                    var broadcastSuccess = await BroadcastTransactionToBoltz("L-BTC", transactionHex, swap.Id);
+                    
+                    if (broadcastSuccess)
+                    {
+                        _logger.LogInformation($"Transaction for swap {swap.Id} successfully broadcast through Boltz API");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"Failed to broadcast transaction for swap {swap.Id} through Boltz API");
+                    }
                 }
 
                 // Once paid, we can unsubscribe from updates for this swap
@@ -233,34 +250,35 @@ public class BoltzExchangerService : IDisposable
         {
             var swapResponse = swap.SwapResponse;
             
-            // Build the process arguments - be careful with spaces in the arguments
-            var args = new[]
-            {
-                "claim-reverse-swap",
-                $"--swap-id", swap.Id,
-                $"--private-key", swap.PrivateKey.ToHex(),
-                $"--preimage", swap.Preimage.ToHex(),
-                $"--swap-tree", "'"+ JsonSerializer.Serialize(swapResponse.SwapTree) +"'",
-                $"--lockup-address", swapResponse.LockupAddress,
-                $"--refund-public-key", swapResponse.RefundPublicKey,
-                $"--address", swap.SwapRequest.Address,
-                $"--blinding-key", swapResponse.BlindingKey ?? string.Empty
-            };
+            // Build full command string for the claimer
+            // Escape quotes in the JSON swap tree
+            var swapTreeJson = JsonSerializer.Serialize(swapResponse.SwapTree)
+                .Replace("\"", "\\\"");  // Replace " with \" for JSON escaping in command line
+                
+            var commandArgs = $"claim-reverse-swap " +
+                $"--swap-id {swap.Id} " +
+                $"--private-key {swap.PrivateKey.ToHex()} " +
+                $"--preimage {swap.Preimage.ToHex()} " +
+                $"--swap-tree \"{swapTreeJson}\" " +
+                $"--lockup-address {swapResponse.LockupAddress} " +
+                $"--refund-public-key {swapResponse.RefundPublicKey} " +
+                $"--address {swap.SwapRequest.Address} " +
+                $"--blinding-key {swapResponse.BlindingKey ?? string.Empty}";
+            
+            // Log the full command for debugging
+            _logger.LogInformation($"Claimer command: claimer.exe {commandArgs}");
+            
+            var claimerPath = System.IO.Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "BoltzExchanger", "claimer.exe");
             
             var processStartInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = System.IO.Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "BoltzExchanger", "claimer.exe"),
+                FileName = claimerPath,
+                Arguments = commandArgs,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            
-            // Add each argument separately to handle spaces correctly
-            foreach (var arg in args)
-            {
-                processStartInfo.ArgumentList.Add(arg);
-            }
             
             _logger.LogInformation($"Invoking claimer for swap {swap.Id}");
             
@@ -300,6 +318,54 @@ public class BoltzExchangerService : IDisposable
         else
         {
             swapData = null;
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Broadcasts a transaction to the Boltz API
+    /// </summary>
+    /// <param name="currency">The currency of the transaction (e.g., "L-BTC")</param>
+    /// <param name="transactionHex">The raw transaction hex string</param>
+    /// <param name="swapId">The swap ID for logging</param>
+    /// <returns>True if the broadcast was successful, false otherwise</returns>
+    private async Task<bool> BroadcastTransactionToBoltz(string currency, string transactionHex, string swapId)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            
+            // The Boltz API endpoint for broadcasting transactions
+            var endpoint = $"https://api.boltz.exchange/v2/chain/{currency}/transaction";
+            
+            // Create the request payload
+            var requestContent = new StringContent(
+                JsonSerializer.Serialize(new { hex = transactionHex }),
+                Encoding.UTF8,
+                "application/json");
+            
+            _logger.LogInformation($"Broadcasting transaction for swap {swapId} to Boltz API endpoint {endpoint}");
+            
+            // Send the POST request
+            var response = await client.PostAsync(endpoint, requestContent);
+            
+            // Check if the request was successful
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation($"Boltz API broadcast response: {responseContent}");
+                return true;
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError($"Failed to broadcast transaction for swap {swapId}. Status: {response.StatusCode}, Response: {errorContent}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error broadcasting transaction for swap {swapId} to Boltz API");
             return false;
         }
     }
