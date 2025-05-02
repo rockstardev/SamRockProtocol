@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using BTCPayServer.Configuration;
 using BTCPayServer.Lightning;
 using BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using TwentyTwenty.Storage.Azure;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
@@ -17,6 +20,7 @@ public class BoltzExchangerService : IDisposable
 {
     private readonly BoltzWebSocketService _webSocketService;
     private readonly CovClaimDaemon _covClaimDaemon;
+    private readonly Microsoft.Extensions.Options.IOptions<DataDirectories> _dataDirectories;
     private readonly EventAggregator _eventAggregator;
     public EventAggregator EventAggregator => _eventAggregator;
     private readonly ILogger<BoltzLightningClient> _logger;
@@ -24,11 +28,13 @@ public class BoltzExchangerService : IDisposable
     public BoltzExchangerService(
         BoltzWebSocketService webSocketService,
         CovClaimDaemon covClaimDaemon,
+        Microsoft.Extensions.Options.IOptions<DataDirectories> dataDirectories,
         EventAggregator eventAggregator,
         ILogger<BoltzLightningClient> logger)
     {
         _webSocketService = webSocketService;
         _covClaimDaemon = covClaimDaemon;
+        _dataDirectories = dataDirectories;
         _eventAggregator = eventAggregator;
         _logger = logger;
     }
@@ -50,12 +56,14 @@ public class BoltzExchangerService : IDisposable
         public required byte[] Preimage { get; init; } // Store the preimage
         public required string PreimageHash { get; init; }
         public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
+        public required CreateReverseSwapResponse SwapResponse { get; init; } // Store the original swap response
         public SwapStatusUpdate? LastStatusUpdate { get; set; }
+        public Key PrivateKey { get; set; }
         public bool IsPaid { get; set; } // Flag indicating if listener was notified
     }
 
     public async Task InvoiceCreatedThroughSwap(LightningInvoice invoice, CreateReverseSwapResponse swapResponse, byte[] preimage, string preimageHashHex, 
-        string requestClaimPublicKeyHex, Uri websocketUri, CancellationToken cancellationToken = default)
+        Key claimPrivateKey, Uri websocketUri, CancellationToken cancellationToken = default)
     {
         // 5. Store Swap Data and Subscribe to Updates
         // https://docs.boltz.exchange/api/claim-covenants
@@ -67,7 +75,7 @@ public class BoltzExchangerService : IDisposable
             Preimage = preimageHex, 
             Tree = swapResponse.SwapTree, // Pass the tree received from Boltz directly
             BlindingKey = swapResponse.BlindingKey, 
-            ClaimPublicKey = requestClaimPublicKeyHex,
+            ClaimPublicKey = claimPrivateKey.PubKey.ToHex(),
             RefundPublicKey = swapResponse.RefundPublicKey
         }, cancellationToken);
 
@@ -77,6 +85,8 @@ public class BoltzExchangerService : IDisposable
             Preimage = preimage,
             PreimageHash = preimageHashHex,
             OriginalInvoice = invoice,
+            SwapResponse = swapResponse,
+            PrivateKey = claimPrivateKey,
             LastStatusUpdate = null,
             IsPaid = false
         });
@@ -184,6 +194,15 @@ public class BoltzExchangerService : IDisposable
                 var paidEvent = new BoltzSwapPaidEvent(swap.Id);
                 _eventAggregator.Publish(paidEvent);
 
+                // Invoke the claimer to claim the swap
+                string? transactionHex = await InvokeClaimerForPaidSwap(swap);
+                
+                if (!string.IsNullOrEmpty(transactionHex))
+                {
+                    _logger.LogInformation($"Successfully obtained transaction hex for swap {swap.Id}: {transactionHex}");
+                    // You can store or use this transaction hex if needed
+                }
+
                 // Once paid, we can unsubscribe from updates for this swap
                 // Use CancellationToken.None as this is a background task
                 await _webSocketService.UnsubscribeFromSwapStatusAsync(swap.Id, CancellationToken.None);
@@ -216,6 +235,70 @@ public class BoltzExchangerService : IDisposable
         var lowerStatus = status.ToLowerInvariant();
         // Add known failure statuses from Boltz API documentation
         return lowerStatus.Contains("fail") || lowerStatus.Contains("refund") || lowerStatus == "invoice.expired";
+    }
+
+    private async Task<string?> InvokeClaimerForPaidSwap(SwapData swap)
+    {
+        try
+        {
+            var swapResponse = swap.SwapResponse;
+            
+            // Build the process arguments - be careful with spaces in the arguments
+            var args = new[]
+            {
+                "claim-reverse-swap",
+                $"--swap-id", swap.Id,
+                $"--private-key", swap.PrivateKey.ToHex(),
+                $"--preimage", swap.Preimage.ToHex(),
+                $"--swap-tree", "'"+ JsonSerializer.Serialize(swapResponse.SwapTree) +"'",
+                $"--lockup-address", swapResponse.LockupAddress,
+                $"--refund-public-key", swapResponse.RefundPublicKey,
+                $"--address", swapResponse.LockupAddress, // Using lockup address as the destination
+                $"--blinding-key", swapResponse.BlindingKey ?? string.Empty
+            };
+            
+            var processStartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = System.IO.Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "BoltzExchanger", "claimer.exe"),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            
+            // Add each argument separately to handle spaces correctly
+            foreach (var arg in args)
+            {
+                processStartInfo.ArgumentList.Add(arg);
+            }
+            
+            _logger.LogInformation($"Invoking claimer for swap {swap.Id}");
+            
+            using var process = System.Diagnostics.Process.Start(processStartInfo);
+            
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
+            
+            await process.WaitForExitAsync();
+            
+            if (process.ExitCode != 0)
+            {
+                var errorMessage = $"Claimer failed for swap {swap.Id} with exit code {process.ExitCode}: {error}";
+                _logger.LogError(errorMessage);
+            }
+            
+            _logger.LogInformation($"Successfully claimed swap {swap.Id}");
+            
+            // The claimer outputs the transaction hex on success
+            // We trim to remove any whitespace and ensure we get just the hex
+            return output?.Trim();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error claiming swap {swap.Id}");
+        }
+        
+        return null;
     }
 
     public bool TryGetPaidInvoice(string paidSwapId, out SwapData swapData)

@@ -73,8 +73,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
 
             // 2. Generate ephemeral key pair for this swap's claim mechanism
             var claimPrivateKey = new Key();
-            var claimPublicKeyHex = claimPrivateKey.PubKey.ToHex();
-            _logger.LogDebug($"Using ephemeral Claim Public Key: {claimPublicKeyHex}");
 
             // 3. Call Boltz API to create reverse swap
             var request = new CreateReverseSwapRequest
@@ -82,10 +80,9 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 Address = _options.SwapAddress,
                 From = "BTC", // We receive BTC (Lightning)
                 To = _options.SwapTo, // We send L-BTC (on-chain)
-                ClaimCovenant = true,
                 InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
                 PreimageHash = preimageHashHex,
-                ClaimPublicKey = claimPublicKeyHex // Provide the public key for the claim script
+                ClaimPublicKey = claimPrivateKey.PubKey.ToHex() // Provide the public key for the claim script
                 // Add Address for claim?
                 // Description? req.Description / req.DescriptionHash
             };
@@ -126,7 +123,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 Preimage = preimageHashHex // Store hash initially, actual preimage only on payment
             };
 
-            await _boltzExchangerService.InvoiceCreatedThroughSwap(invoice, swapResponse, preimage, preimageHashHex, request.ClaimPublicKey, 
+            await _boltzExchangerService.InvoiceCreatedThroughSwap(invoice, swapResponse, preimage, preimageHashHex, claimPrivateKey, 
                 WebSocketUri(), cancellationTokenDebug);
 
             return invoice;
