@@ -7,11 +7,12 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Aqua.BTCPayPlugin;
 
-public class AquaPlugin : BaseBTCPayServerPlugin
+public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
 {
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
-        new() { Identifier = nameof(BTCPayServer), Condition = ">=2.0.0" }
+        new() { Identifier = nameof(BTCPayServer), Condition = ">=2.0.0" },
+        new() { Identifier = nameof(BTCPayServer.RockstarDev.Plugins.BoltzExchanger), Condition = ">=0.0.1" }
     ];
 
     public static bool IsDevMode =>

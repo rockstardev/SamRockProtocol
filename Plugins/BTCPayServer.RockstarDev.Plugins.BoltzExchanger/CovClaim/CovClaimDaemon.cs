@@ -314,7 +314,7 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim
             }
 
             var client = _httpClientFactory.CreateClient("CovClaimDownload");
-            var releaseBaseUrl = $"https://github.com/rockstardev/Aqua.BTCPayPlugin/releases/download/v{version}/";
+            var releaseBaseUrl = $"https://github.com/rockstardev/SamRockProtocol/releases/download/v{version}/";
             string archiveName = $"covclaim-windows-{Architecture}-v{version}.tar.gz";
             var downloadUrl = releaseBaseUrl + archiveName;
             //downloadUrl = "https://github.com/BoltzExchange/boltz-client/releases/download/v2.5.1/boltz-client-linux-amd64-v2.5.1.tar.gz";
