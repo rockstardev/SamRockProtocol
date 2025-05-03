@@ -2,7 +2,6 @@
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Lightning;
-using BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -27,10 +26,6 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
 
         // Register Singleton Service that maintains state
         services.AddSingleton<BoltzExchangerService>();
-        
-        // Register the CovClaimDaemon 
-        services.AddSingleton<CovClaimDaemon>();
-        services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<CovClaimDaemon>());
 
         // Register the connection string handler
         services.AddSingleton<ILightningConnectionStringHandler, BoltzLightningConnectionStringHandler>();

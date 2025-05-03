@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using BTCPayServer.Configuration;
 using BTCPayServer.Lightning;
-using BTCPayServer.RockstarDev.Plugins.BoltzExchanger.CovClaim;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
 using TwentyTwenty.Storage.Azure;
@@ -22,7 +21,6 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 public class BoltzExchangerService : IDisposable
 {
     private readonly BoltzWebSocketService _webSocketService;
-    private readonly CovClaimDaemon _covClaimDaemon;
     private readonly Microsoft.Extensions.Options.IOptions<DataDirectories> _dataDirectories;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly EventAggregator _eventAggregator;
@@ -31,14 +29,12 @@ public class BoltzExchangerService : IDisposable
 
     public BoltzExchangerService(
         BoltzWebSocketService webSocketService,
-        CovClaimDaemon covClaimDaemon,
         Microsoft.Extensions.Options.IOptions<DataDirectories> dataDirectories,
         IHttpClientFactory httpClientFactory,
         EventAggregator eventAggregator,
         ILogger<BoltzLightningClient> logger)
     {
         _webSocketService = webSocketService;
-        _covClaimDaemon = covClaimDaemon;
         _dataDirectories = dataDirectories;
         _httpClientFactory = httpClientFactory;
         _eventAggregator = eventAggregator;
