@@ -57,7 +57,7 @@ public partial class BoltzLightningClient
     }
 
     public Task<OpenChannelResponse> OpenChannel(OpenChannelRequest openChannelRequest, CancellationToken cancellationToken = default)
-    {        
+    {
         _logger.LogWarning("OpenChannel is not applicable to the Boltz client.");
         return Task.FromException<OpenChannelResponse>(new NotSupportedException("OpenChannel is not applicable to the Boltz client."));
     }
@@ -78,7 +78,7 @@ public partial class BoltzLightningClient
         // Boltz manages swaps, not persistent Lightning channels.
         return Task.FromResult(Array.Empty<LightningChannel>());
     }
-    
+
     public Task<LightningPayment> GetPayment(string paymentHash, CancellationToken cancellationToken = default)
     {
         _logger.LogWarning($"GetPayment({paymentHash}) not supported/implemented for Boltz client.");
@@ -98,12 +98,12 @@ public partial class BoltzLightningClient
         return Task.FromResult(Array.Empty<LightningPayment>());
     }
 
-    public Task<LightningInvoice[]> ListInvoices(CancellationToken cancellation = new CancellationToken())
+    public Task<LightningInvoice[]> ListInvoices(CancellationToken cancellation = new())
     {
         throw new NotImplementedException();
     }
 
-    public Task<LightningInvoice[]> ListInvoices(ListInvoicesParams request, CancellationToken cancellation = new CancellationToken())
+    public Task<LightningInvoice[]> ListInvoices(ListInvoicesParams request, CancellationToken cancellation = new())
     {
         throw new NotImplementedException();
     }

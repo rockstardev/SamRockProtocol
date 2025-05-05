@@ -1,7 +1,5 @@
 #nullable enable
 using System;
-using System.Collections.Concurrent;
-using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -10,14 +8,13 @@ using System.Threading.Tasks;
 using BTCPayServer.Lightning;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
-using NBitcoin.DataEncoders;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 public partial class BoltzLightningClient : ILightningClient, IDisposable
 {
-    private readonly HttpClient _httpClient;
     private readonly BoltzExchangerService _boltzExchangerService;
+    private readonly HttpClient _httpClient;
     private readonly BoltzOptions _options;
 
     public BoltzLightningClient(BoltzOptions options, HttpClient httpClient, BoltzExchangerService boltzExchangerService,
@@ -35,13 +32,6 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     public void Dispose()
     {
         _logger.LogInformation("Disposing BoltzLightningClient.");
-    }
-
-    private Uri WebSocketUri()
-    {
-        var str = _options.ApiUrl.ToString().Replace("http", "ws") + "/v2/ws";
-        str = str.Replace("//v2/ws", "/v2/ws"); // handle base URL with trailing slash
-        return new Uri(str);
     }
 
     public Task<LightningInvoice> CreateInvoice(CreateInvoiceParams createInvoiceRequest, CancellationToken cancellation = new())
@@ -122,7 +112,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
                 Preimage = preimageHashHex // Store hash initially, actual preimage only on payment
             };
 
-            await _boltzExchangerService.InvoiceCreatedThroughSwap(invoice, request, swapResponse, preimage, preimageHashHex, claimPrivateKey, 
+            await _boltzExchangerService.InvoiceCreatedThroughSwap(invoice, request, swapResponse, preimage, preimageHashHex, claimPrivateKey,
                 WebSocketUri(), cancellationTokenDebug);
 
             return invoice;
@@ -143,14 +133,21 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     {
         return _boltzExchangerService.CancelInvoice(WebSocketUri(), invoiceId, cancellationToken);
     }
-    
-    public Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = new CancellationToken())
+
+    public Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = new())
     {
         return _boltzExchangerService.GetInvoice(invoiceId, cancellation);
     }
 
-    public Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new CancellationToken())
+    public Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new())
     {
         return _boltzExchangerService.GetInvoice(paymentHash, cancellation);
+    }
+
+    private Uri WebSocketUri()
+    {
+        var str = _options.ApiUrl.ToString().Replace("http", "ws") + "/v2/ws";
+        str = str.Replace("//v2/ws", "/v2/ws"); // handle base URL with trailing slash
+        return new Uri(str);
     }
 }

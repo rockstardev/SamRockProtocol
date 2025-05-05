@@ -1,6 +1,4 @@
 #nullable enable
-using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
@@ -11,13 +9,13 @@ public class CreateReverseSwapRequest
 {
     [JsonPropertyName("address")]
     public string Address { get; set; }
-    
+
     [JsonPropertyName("from")]
     public string From { get; set; } = "BTC"; // Lightning
 
     [JsonPropertyName("to")]
     public string To { get; set; } = "L-BTC";
-    
+
     [JsonPropertyName("claimCovenant")]
     public bool ClaimCovenant { get; set; }
 

@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -17,59 +16,29 @@ using Microsoft.Extensions.Logging;
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 /// <summary>
-/// Manages WebSocket connections to the Boltz API for real-time swap updates.
-/// Handles message fragmentation, subscriptions, and dispatching updates.
+///     Manages WebSocket connections to the Boltz API for real-time swap updates.
+///     Handles message fragmentation, subscriptions, and dispatching updates.
 /// </summary>
 public class BoltzWebSocketService : IHostedService, IAsyncDisposable
 {
-    private readonly ILogger<BoltzWebSocketService> _logger;
-
     // Connection management: Key = WebSocket URI
     private readonly ConcurrentDictionary<Uri, WebSocketConnection> _connections = new();
-
-    // Subscription management: Key = Swap ID, Value = Callback delegate
-    private readonly ConcurrentDictionary<string, Func<SwapStatusUpdate, Task>> _swapSubscriptions = new();
+    private readonly ILogger<BoltzWebSocketService> _logger;
+    private readonly TimeSpan _pingInterval = TimeSpan.FromSeconds(30);
+    private readonly CancellationTokenSource _stoppingCts = new(); // Overall service cancellation
 
     // NEW: Map Swap ID to the URI it was subscribed on
     private readonly ConcurrentDictionary<string, Uri> _swapIdToUriMap = new();
 
+    // Subscription management: Key = Swap ID, Value = Callback delegate
+    private readonly ConcurrentDictionary<string, Func<SwapStatusUpdate, Task>> _swapSubscriptions = new();
+
     // Timer for sending keep-alive pings
     private Timer? _pingTimer;
-    private readonly TimeSpan _pingInterval = TimeSpan.FromSeconds(30);
-    private readonly CancellationTokenSource _stoppingCts = new(); // Overall service cancellation
-
-    // Record to hold connection state
-    private record WebSocketConnection(ClientWebSocket WebSocket, Task ListenTask, CancellationTokenSource Cts);
 
     public BoltzWebSocketService(ILogger<BoltzWebSocketService> logger)
     {
         _logger = logger;
-    }
-
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Boltz WebSocket Service starting.");
-        // Combine external cancellation with the service's stopping token
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stoppingCts.Token);
-        StartPingTimer(linkedCts.Token); // Pass linked token
-        return Task.CompletedTask;
-    }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("Boltz WebSocket Service stopping.");
-
-        _stoppingCts.Cancel(); // Signal cancellation to all operations
-        _pingTimer?.Dispose();
-
-        var cleanupTasks = _connections.Keys.ToList().Select(uri => CleanupConnectionAsync(uri, false));
-        await Task.WhenAll(cleanupTasks);
-
-        _connections.Clear();
-        _swapSubscriptions.Clear();
-        _swapIdToUriMap.Clear();
-
-        _logger.LogInformation("Boltz WebSocket Service stopped.");
     }
 
     public async ValueTask DisposeAsync()
@@ -105,9 +74,35 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Boltz WebSocket Service starting.");
+        // Combine external cancellation with the service's stopping token
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stoppingCts.Token);
+        StartPingTimer(linkedCts.Token); // Pass linked token
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Boltz WebSocket Service stopping.");
+
+        _stoppingCts.Cancel(); // Signal cancellation to all operations
+        _pingTimer?.Dispose();
+
+        var cleanupTasks = _connections.Keys.ToList().Select(uri => CleanupConnectionAsync(uri, false));
+        await Task.WhenAll(cleanupTasks);
+
+        _connections.Clear();
+        _swapSubscriptions.Clear();
+        _swapIdToUriMap.Clear();
+
+        _logger.LogInformation("Boltz WebSocket Service stopped.");
+    }
+
     /// <summary>
-    /// Subscribes to status updates for a specific swap ID.
-    /// Ensures a WebSocket connection is established to the necessary endpoint.
+    ///     Subscribes to status updates for a specific swap ID.
+    ///     Ensures a WebSocket connection is established to the necessary endpoint.
     /// </summary>
     public async Task SubscribeToSwapStatusAsync(Uri wsApiUri, string swapId, Func<SwapStatusUpdate, Task> onUpdateCallback,
         CancellationToken cancellationToken = default)
@@ -140,7 +135,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
     }
 
     /// <summary>
-    /// Unsubscribes from status updates for a specific swap ID.
+    ///     Unsubscribes from status updates for a specific swap ID.
     /// </summary>
     public async Task UnsubscribeFromSwapStatusAsync(string swapId, CancellationToken cancellationToken = default)
     {
@@ -167,9 +162,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
         }
 
         if (_connections.TryGetValue(wsApiUri, out var connection) && connection.WebSocket.State == WebSocketState.Open)
-        {
             await SendSubscriptionMessageAsync(connection, new[] { swapId }, "unsubscribe", cancellationToken);
-        }
 
         // Consider cleanup if no more subscriptions for this URI?
         // CheckIfConnectionNeeded(wsApiUri);
@@ -185,15 +178,11 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
         if (_connections.TryGetValue(wsUri, out var existingConnection))
         {
             if (existingConnection.WebSocket.State == WebSocketState.Open || existingConnection.WebSocket.State == WebSocketState.Connecting)
-            {
                 return existingConnection;
-            }
-            else
-            {
-                _logger.LogWarning(
-                    $"Existing connection to {wsUri} found in state {existingConnection.WebSocket.State}. Attempting to clean up and reconnect.");
-                await CleanupConnectionAsync(wsUri, true);
-            }
+
+            _logger.LogWarning(
+                $"Existing connection to {wsUri} found in state {existingConnection.WebSocket.State}. Attempting to clean up and reconnect.");
+            await CleanupConnectionAsync(wsUri);
         }
 
         _logger.LogInformation($"Attempting to connect to Boltz WebSocket: {wsUri}");
@@ -222,12 +211,10 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
                 StartPingTimer(combinedToken); // Ensure ping timer is running
                 return newConnection;
             }
-            else
-            {
-                _logger.LogWarning($"Failed to add new connection for {wsUri} (already added?). Cleaning up.");
-                await CleanupConnectionAsync(wsUri, newConnection, false); // Cleanup without removing from dict as it wasn't added
-                return _connections.TryGetValue(wsUri, out var raceConditionWinner) ? raceConditionWinner : null; // Return the one that won the race
-            }
+
+            _logger.LogWarning($"Failed to add new connection for {wsUri} (already added?). Cleaning up.");
+            await CleanupConnectionAsync(wsUri, newConnection, false); // Cleanup without removing from dict as it wasn't added
+            return _connections.TryGetValue(wsUri, out var raceConditionWinner) ? raceConditionWinner : null; // Return the one that won the race
         }
         catch (OperationCanceledException) when (combinedToken.IsCancellationRequested)
         {
@@ -288,10 +275,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
                             goto NextMessageFragmentLoop;
                         }
 
-                        if (result.Count > 0)
-                        {
-                            await ms.WriteAsync(buffer, 0, result.Count, receiveCts.Token);
-                        }
+                        if (result.Count > 0) await ms.WriteAsync(buffer, 0, result.Count, receiveCts.Token);
                     } while (!result.EndOfMessage && !receiveCts.Token.IsCancellationRequested);
 
                     if (receiveCts.Token.IsCancellationRequested) break; // Check again after loop
@@ -315,8 +299,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
                         return; // Exit loop gracefully
                     }
 
-                    NextMessageFragmentLoop:
-                    continue;
+                    NextMessageFragmentLoop: ;
                 }
                 catch (OperationCanceledException) when (receiveCts.IsCancellationRequested)
                 {
@@ -336,13 +319,9 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
                 catch (Exception ex)
                 {
                     if (ex is ObjectDisposedException ode && ode.ObjectName == typeof(ClientWebSocket).FullName)
-                    {
                         _logger.LogWarning($"WebSocket was disposed during ReceiveLoopAsync for {wsUri} (ID: {connectionId}). Likely closed externally.");
-                    }
                     else
-                    {
                         _logger.LogError(ex, $"Unexpected error in ReceiveLoopAsync for {wsUri} (ID: {connectionId}).");
-                    }
 
                     break; // Exit main while loop, let cleanup handle
                 }
@@ -353,7 +332,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
         {
             _logger.LogDebug($"ReceiveLoopAsync finished for {wsUri} (ID: {connectionId}). State: {connection.WebSocket.State}");
             // Ensure connection is cleaned up if the loop exits unexpectedly or normally after close/cancel
-            await CleanupConnectionAsync(wsUri, connection, true);
+            await CleanupConnectionAsync(wsUri, connection);
         }
     }
 
@@ -380,7 +359,6 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
                         if (updateData?.Id != null)
                         {
                             if (_swapSubscriptions.TryGetValue(updateData.Id, out var callback))
-                            {
                                 try
                                 {
                                     await callback(updateData);
@@ -389,7 +367,6 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
                                 {
                                     _logger.LogError(callbackEx, $"Error executing callback for swap update {updateData.Id}");
                                 }
-                            }
                             // else: No active subscription for this swap ID, just ignore.
                         }
                         else
@@ -488,10 +465,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
     // Cleans up a single WebSocket connection.
     private async Task CleanupConnectionAsync(Uri wsUri, bool removeFromDictionary = true)
     {
-        if (_connections.TryGetValue(wsUri, out var connection))
-        {
-            await CleanupConnectionAsync(wsUri, connection, removeFromDictionary);
-        }
+        if (_connections.TryGetValue(wsUri, out var connection)) await CleanupConnectionAsync(wsUri, connection, removeFromDictionary);
     }
 
     private async Task CleanupConnectionAsync(Uri wsUri, WebSocketConnection connection, bool removeFromDictionary = true)
@@ -506,13 +480,11 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
 
         // Signal cancellation *before* closing
         if (!connection.Cts.IsCancellationRequested)
-        {
             try { connection.Cts.Cancel(); }
             catch (ObjectDisposedException)
             {
                 /* Already disposed */
             }
-        }
 
         // Close the WebSocket gracefully if possible
         if (connection.WebSocket.State == WebSocketState.Open || connection.WebSocket.State == WebSocketState.CloseReceived)
@@ -552,9 +524,7 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
         try
         {
             if (connection.ListenTask != null && !connection.ListenTask.IsCompleted)
-            {
                 await connection.ListenTask.WaitAsync(TimeSpan.FromSeconds(2)); // Wait briefly
-            }
         }
         catch (TimeoutException)
         {
@@ -624,10 +594,13 @@ public class BoltzWebSocketService : IHostedService, IAsyncDisposable
             else
             {
                 _logger.LogWarning($"Connection to {kvp.Key} is not open ({kvp.Value.WebSocket.State}) during ping. Cleaning up.");
-                await CleanupConnectionAsync(kvp.Key, kvp.Value, true); // Cleanup stale connection found during ping
+                await CleanupConnectionAsync(kvp.Key, kvp.Value); // Cleanup stale connection found during ping
             }
         }
     }
+
+    // Record to hold connection state
+    private record WebSocketConnection(ClientWebSocket WebSocket, Task ListenTask, CancellationTokenSource Cts);
 
     // Helper to find URI - consider removing if only used in cleanup
     // private Uri? GetUriForConnection(WebSocketConnection connection)

@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -10,26 +11,29 @@ using System.Threading.Tasks;
 using BTCPayServer.Configuration;
 using BTCPayServer.Lightning;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NBitcoin;
 using TwentyTwenty.Storage.Azure;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 /// <summary>
-/// This service maintains the state of current invoices and raises appropriate events
+///     This service maintains the state of current invoices and raises appropriate events
 /// </summary>
 public class BoltzExchangerService : IDisposable
 {
-    private readonly BoltzWebSocketService _webSocketService;
-    private readonly Microsoft.Extensions.Options.IOptions<DataDirectories> _dataDirectories;
+    private readonly IOptions<DataDirectories> _dataDirectories;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly EventAggregator _eventAggregator;
-    public EventAggregator EventAggregator => _eventAggregator;
     private readonly ILogger<BoltzLightningClient> _logger;
+
+    // Internal cache for preimage -> swap ID mapping for lookups
+    private readonly ConcurrentDictionary<string, string> _preimageHashToSwapId = new();
+    private readonly ConcurrentDictionary<string, SwapData> _swapData = new(); // Key: Swap ID
+    private readonly BoltzWebSocketService _webSocketService;
 
     public BoltzExchangerService(
         BoltzWebSocketService webSocketService,
-        Microsoft.Extensions.Options.IOptions<DataDirectories> dataDirectories,
+        IOptions<DataDirectories> dataDirectories,
         IHttpClientFactory httpClientFactory,
         EventAggregator eventAggregator,
         ILogger<BoltzLightningClient> logger)
@@ -37,32 +41,16 @@ public class BoltzExchangerService : IDisposable
         _webSocketService = webSocketService;
         _dataDirectories = dataDirectories;
         _httpClientFactory = httpClientFactory;
-        _eventAggregator = eventAggregator;
+        EventAggregator = eventAggregator;
         _logger = logger;
     }
+
+    public EventAggregator EventAggregator { get; }
 
     public void Dispose()
     {
         _swapData.Clear();
         _preimageHashToSwapId.Clear();
-    }
-
-    // Internal cache for preimage -> swap ID mapping for lookups
-    private readonly ConcurrentDictionary<string, string> _preimageHashToSwapId = new();
-    private readonly ConcurrentDictionary<string, SwapData> _swapData = new(); // Key: Swap ID
-
-    // Internal data structure for holding swap details
-    public class SwapData
-    {
-        public required string Id { get; init; }
-        public required byte[] Preimage { get; init; } // Store the preimage
-        public required string PreimageHash { get; init; }
-        public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
-        public CreateReverseSwapRequest SwapRequest { get; set; }
-        public required CreateReverseSwapResponse SwapResponse { get; init; } // Store the original swap response
-        public SwapStatusUpdate? LastStatusUpdate { get; set; }
-        public Key PrivateKey { get; set; }
-        public bool IsPaid { get; set; } // Flag indicating if listener was notified
     }
 
     public async Task InvoiceCreatedThroughSwap(LightningInvoice invoice, CreateReverseSwapRequest req, CreateReverseSwapResponse resp,
@@ -119,14 +107,12 @@ public class BoltzExchangerService : IDisposable
             _logger.LogDebug($"GetInvoice by ID: Found swap {invoiceId} in cache.");
             return swapDetails.OriginalInvoice;
         }
-        else
-        {
-            _logger.LogWarning($"GetInvoice by ID: Swap {invoiceId} not found in cache.");
-            return null;
-        }
+
+        _logger.LogWarning($"GetInvoice by ID: Swap {invoiceId} not found in cache.");
+        return null;
     }
 
-    public async Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new CancellationToken())
+    public async Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = new())
     {
         var preimageHashStr = paymentHash.ToString();
         if (_preimageHashToSwapId.TryGetValue(preimageHashStr, out var swapId))
@@ -137,18 +123,14 @@ public class BoltzExchangerService : IDisposable
                 // Return a Task containing the cached invoice
                 return swapDetails.OriginalInvoice;
             }
-            else
-            {
-                // This case implies inconsistent cache (mapping exists, but swap data doesn't). Log error.
-                _logger.LogError($"GetInvoice by PaymentHash: Inconsistent cache! Found mapping {preimageHashStr} -> {swapId}, but swap data not found.");
-                return null;
-            }
-        }
-        else
-        {
-            _logger.LogWarning($"GetInvoice by PaymentHash: Swap with payment hash {preimageHashStr} not found in cache.");
+
+            // This case implies inconsistent cache (mapping exists, but swap data doesn't). Log error.
+            _logger.LogError($"GetInvoice by PaymentHash: Inconsistent cache! Found mapping {preimageHashStr} -> {swapId}, but swap data not found.");
             return null;
         }
+
+        _logger.LogWarning($"GetInvoice by PaymentHash: Swap with payment hash {preimageHashStr} not found in cache.");
+        return null;
     }
 
     private async Task HandleSwapUpdate(SwapStatusUpdate update)
@@ -174,36 +156,28 @@ public class BoltzExchangerService : IDisposable
 
                 // Ensure preimage is included in the invoice object before publishing
                 if (swap.Preimage != null)
-                {
                     swap.OriginalInvoice.Preimage = Convert.ToHexString(swap.Preimage).ToLowerInvariant();
-                }
                 else
-                {
                     _logger.LogWarning($"Preimage is null for paid swap {swap.Id} when preparing BoltzSwapPaidEvent.");
-                }
 
                 // Publish the event for the listener to pick up
                 var paidEvent = new BoltzSwapPaidEvent(swap.Id);
-                _eventAggregator.Publish(paidEvent);
+                EventAggregator.Publish(paidEvent);
 
                 // Invoke the claimer to claim the swap
-                string? transactionHex = await InvokeClaimerForPaidSwap(swap);
+                var transactionHex = await InvokeClaimerForPaidSwap(swap);
 
                 if (!string.IsNullOrEmpty(transactionHex))
                 {
                     _logger.LogInformation($"Successfully obtained transaction hex for swap {swap.Id}: {transactionHex}");
-                    
+
                     // Broadcast the transaction to Boltz
                     var broadcastSuccess = await BroadcastTransactionToBoltz("L-BTC", transactionHex, swap.Id);
-                    
+
                     if (broadcastSuccess)
-                    {
                         _logger.LogInformation($"Transaction for swap {swap.Id} successfully broadcast through Boltz API");
-                    }
                     else
-                    {
                         _logger.LogWarning($"Failed to broadcast transaction for swap {swap.Id} through Boltz API");
-                    }
                 }
 
                 // Once paid, we can unsubscribe from updates for this swap
@@ -245,28 +219,28 @@ public class BoltzExchangerService : IDisposable
         try
         {
             var swapResponse = swap.SwapResponse;
-            
+
             // Build full command string for the claimer
             // Escape quotes in the JSON swap tree
             var swapTreeJson = JsonSerializer.Serialize(swapResponse.SwapTree)
-                .Replace("\"", "\\\"");  // Replace " with \" for JSON escaping in command line
-                
+                .Replace("\"", "\\\""); // Replace " with \" for JSON escaping in command line
+
             var commandArgs = $"claim-reverse-swap " +
-                $"--swap-id {swap.Id} " +
-                $"--private-key {swap.PrivateKey.ToHex()} " +
-                $"--preimage {swap.Preimage.ToHex()} " +
-                $"--swap-tree \"{swapTreeJson}\" " +
-                $"--lockup-address {swapResponse.LockupAddress} " +
-                $"--refund-public-key {swapResponse.RefundPublicKey} " +
-                $"--address {swap.SwapRequest.Address} " +
-                $"--blinding-key {swapResponse.BlindingKey ?? string.Empty}";
-            
+                              $"--swap-id {swap.Id} " +
+                              $"--private-key {swap.PrivateKey.ToHex()} " +
+                              $"--preimage {swap.Preimage.ToHex()} " +
+                              $"--swap-tree \"{swapTreeJson}\" " +
+                              $"--lockup-address {swapResponse.LockupAddress} " +
+                              $"--refund-public-key {swapResponse.RefundPublicKey} " +
+                              $"--address {swap.SwapRequest.Address} " +
+                              $"--blinding-key {swapResponse.BlindingKey ?? string.Empty}";
+
             // Log the full command for debugging
             _logger.LogInformation($"Claimer command: claimer.exe {commandArgs}");
-            
-            var claimerPath = System.IO.Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "BoltzExchanger", "claimer.exe");
-            
-            var processStartInfo = new System.Diagnostics.ProcessStartInfo
+
+            var claimerPath = Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "BoltzExchanger", "claimer.exe");
+
+            var processStartInfo = new ProcessStartInfo
             {
                 FileName = claimerPath,
                 Arguments = commandArgs,
@@ -275,24 +249,24 @@ public class BoltzExchangerService : IDisposable
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
-            
+
             _logger.LogInformation($"Invoking claimer for swap {swap.Id}");
-            
-            using var process = System.Diagnostics.Process.Start(processStartInfo);
-            
+
+            using var process = Process.Start(processStartInfo);
+
             var output = await process.StandardOutput.ReadToEndAsync();
             var error = await process.StandardError.ReadToEndAsync();
-            
+
             await process.WaitForExitAsync();
-            
+
             if (process.ExitCode != 0)
             {
                 var errorMessage = $"Claimer failed for swap {swap.Id} with exit code {process.ExitCode}: {error}";
                 _logger.LogError(errorMessage);
             }
-            
+
             _logger.LogInformation($"Successfully claimed swap {swap.Id}");
-            
+
             // The claimer outputs the transaction hex on success
             // We trim to remove any whitespace and ensure we get just the hex
             return output?.Trim();
@@ -307,19 +281,14 @@ public class BoltzExchangerService : IDisposable
 
     public bool TryGetPaidInvoice(string paidSwapId, out SwapData swapData)
     {
-        if (_swapData.TryGetValue(paidSwapId, out swapData))
-        {
-            return true;
-        }
-        else
-        {
-            swapData = null;
-            return false;
-        }
+        if (_swapData.TryGetValue(paidSwapId, out swapData)) return true;
+
+        swapData = null;
+        return false;
     }
-    
+
     /// <summary>
-    /// Broadcasts a transaction to the Boltz API
+    ///     Broadcasts a transaction to the Boltz API
     /// </summary>
     /// <param name="currency">The currency of the transaction (e.g., "L-BTC")</param>
     /// <param name="transactionHex">The raw transaction hex string</param>
@@ -330,21 +299,21 @@ public class BoltzExchangerService : IDisposable
         try
         {
             var client = _httpClientFactory.CreateClient();
-            
+
             // The Boltz API endpoint for broadcasting transactions
             var endpoint = $"https://api.boltz.exchange/v2/chain/{currency}/transaction";
-            
+
             // Create the request payload
             var requestContent = new StringContent(
                 JsonSerializer.Serialize(new { hex = transactionHex }),
                 Encoding.UTF8,
                 "application/json");
-            
+
             _logger.LogInformation($"Broadcasting transaction for swap {swapId} to Boltz API endpoint {endpoint}");
-            
+
             // Send the POST request
             var response = await client.PostAsync(endpoint, requestContent);
-            
+
             // Check if the request was successful
             if (response.IsSuccessStatusCode)
             {
@@ -352,17 +321,29 @@ public class BoltzExchangerService : IDisposable
                 _logger.LogInformation($"Boltz API broadcast response: {responseContent}");
                 return true;
             }
-            else
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                _logger.LogError($"Failed to broadcast transaction for swap {swapId}. Status: {response.StatusCode}, Response: {errorContent}");
-                return false;
-            }
+
+            var errorContent = await response.Content.ReadAsStringAsync();
+            _logger.LogError($"Failed to broadcast transaction for swap {swapId}. Status: {response.StatusCode}, Response: {errorContent}");
+            return false;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, $"Error broadcasting transaction for swap {swapId} to Boltz API");
             return false;
         }
+    }
+
+    // Internal data structure for holding swap details
+    public class SwapData
+    {
+        public required string Id { get; init; }
+        public required byte[] Preimage { get; init; } // Store the preimage
+        public required string PreimageHash { get; init; }
+        public required LightningInvoice OriginalInvoice { get; init; } // Store the invoice BOLT11
+        public CreateReverseSwapRequest SwapRequest { get; set; }
+        public required CreateReverseSwapResponse SwapResponse { get; init; } // Store the original swap response
+        public SwapStatusUpdate? LastStatusUpdate { get; set; }
+        public Key PrivateKey { get; set; }
+        public bool IsPaid { get; set; } // Flag indicating if listener was notified
     }
 }

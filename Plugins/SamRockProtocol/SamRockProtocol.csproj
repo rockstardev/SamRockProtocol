@@ -8,8 +8,9 @@
     <!-- Plugin specific properties -->
     <PropertyGroup>
         <Product>zzz - SamRock Protocol</Product>
-        <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** SamRock protocol provides ability to import wallet derivation keys in BTCPay. 
-            Try it out with Aqua Wallet!</Description>
+        <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** SamRock protocol provides ability to import wallet derivation keys in BTCPay.
+            Try it out with Aqua Wallet!
+        </Description>
         <Version>1.0.12</Version>
     </PropertyGroup>
 
@@ -32,6 +33,6 @@
     <ItemGroup>
         <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj"/>
         <EmbeddedResource Include="Resources\**"/>
-        <ProjectReference Include="..\BTCPayServer.RockstarDev.Plugins.BoltzExchanger\BTCPayServer.RockstarDev.Plugins.BoltzExchanger.csproj" />
+        <ProjectReference Include="..\BTCPayServer.RockstarDev.Plugins.BoltzExchanger\BTCPayServer.RockstarDev.Plugins.BoltzExchanger.csproj"/>
     </ItemGroup>
 </Project>

@@ -1,10 +1,7 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http;
 using BTCPayServer.Lightning;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
 
@@ -13,8 +10,8 @@ namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 public class BoltzLightningConnectionStringHandler : ILightningConnectionStringHandler
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly BoltzExchangerService _service;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly BoltzExchangerService _service;
 
     // Inject required services
     public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzExchangerService service, ILoggerFactory loggerFactory)
@@ -92,11 +89,11 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
         {
             ApiUrl = apiUrl,
             SwapTo = swapToAsset, // Assuming BTC Lightning is what user receives
-            SwapAddress = swapAddress, // Store the validated address
+            SwapAddress = swapAddress // Store the validated address
         };
 
         // Create HttpClient instance
-        var httpClient = _httpClientFactory.CreateClient(nameof(BoltzLightningClient)); 
+        var httpClient = _httpClientFactory.CreateClient(nameof(BoltzLightningClient));
         // Consider configuring base address or other HttpClient options here if needed
         // httpClient.BaseAddress = options.ApiUrl; // BaseAddress is set in BoltzLightningClient constructor
 
