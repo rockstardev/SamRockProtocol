@@ -1,10 +1,15 @@
 #nullable enable
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
+using BTCPayServer.Configuration;
 using BTCPayServer.Lightning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
@@ -17,6 +22,9 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
 
     public override void Execute(IServiceCollection services)
     {
+        // Check if the plugin is ran on supported platform and if not error will be throw so we exit right away
+        _ = RuntimeWrapper.GetClaimerPath("");
+        
         // Register HttpClientFactory if not already registered (usually is)
         services.AddHttpClient();
 
@@ -30,19 +38,34 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
         // Register the connection string handler
         services.AddSingleton<ILightningConnectionStringHandler, BoltzLightningConnectionStringHandler>();
 
-        _ = services.AddSingleton<PluginRegistrator>();
         base.Execute(services);
-
-        // TODO: Implement the core logic in BoltzLightningClient
-        // Connection string: type=boltzexchanger;swap-to=L-BTC;apiurl=https://api.[testnet.]boltz.exchange/
-    }
+   }
 }
 
-// Helper class to ensure plugin gets initialized (if needed later)
-internal class PluginRegistrator
+public class RuntimeWrapper
 {
-    public PluginRegistrator(ILogger<BoltzExchangerPlugin> logger)
+    private static string Architecture => RuntimeInformation.OSArchitecture switch
     {
-        logger.LogInformation("Boltz Exchanger Plugin activated.");
+        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
+        System.Runtime.InteropServices.Architecture.X64 => "amd64",
+        _ => throw new NotSupportedException("Unsupported architecture")
+    };
+
+    public static string GetClaimerPath(string datadir)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            if (Architecture == "amd64")
+                return Path.Combine(datadir, "Plugins", "BoltzExchanger", "claimer-linux-amd64");
+            else if (Architecture == "arm64")
+                return Path.Combine(datadir, "Plugins", "BoltzExchanger", "claimer-linux-arm64");
+            else
+                throw new NotSupportedException("Unsupported architecture");
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return Path.Combine(datadir, "Plugins", "BoltzExchanger", "claimer.exe");
+        
+        throw new NotSupportedException("Unsupported platform");
     }
 }

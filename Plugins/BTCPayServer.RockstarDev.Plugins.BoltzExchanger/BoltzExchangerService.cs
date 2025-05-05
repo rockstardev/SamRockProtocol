@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -12,6 +13,7 @@ using BTCPayServer.Configuration;
 using BTCPayServer.Lightning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.VisualBasic;
 using NBitcoin;
 using TwentyTwenty.Storage.Azure;
 
@@ -238,8 +240,8 @@ public class BoltzExchangerService : IDisposable
             // Log the full command for debugging
             _logger.LogInformation($"Claimer command: claimer.exe {commandArgs}");
 
-            var claimerPath = Path.Combine(_dataDirectories.Value.DataDir, "Plugins", "BoltzExchanger", "claimer.exe");
-
+            var claimerPath = RuntimeWrapper.GetClaimerPath(_dataDirectories.Value.DataDir);
+            
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = claimerPath,
