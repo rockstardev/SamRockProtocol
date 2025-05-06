@@ -74,8 +74,8 @@ public class AquaController : Controller
         var model = new ImportWalletsViewModel
         {
             BtcChain = true,
-            BtcLn = false,
-            LiquidChain = false,
+            BtcLn = true,
+            LiquidChain = true,
             LiquidSupportedOnServer = _explorerProvider.GetNetwork("LBTC") != null
         };
         return View(model);
@@ -156,12 +156,12 @@ public class AquaController : Controller
 
     private async Task SetupLightning(BtcLnSetupModel setupModelBtcLn, SamrockProtocolSetupResponse result)
     {
-        var isBoltzPluginLoaded = _serviceProvider.GetService<BoltzExchangerService>() != null;
-        if (!isBoltzPluginLoaded)
-        {
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Boltz Exchanger Plugin is required but not loaded.", null);
-            return;
-        }
+        // var isBoltzPluginLoaded = _serviceProvider.GetService<BoltzExchangerService>() != null;
+        // if (!isBoltzPluginLoaded)
+        // {
+        //     result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Boltz Exchanger Plugin is required but not loaded.", null);
+        //     return;
+        // }
 
         // Only proceed if UseLiquidBoltz is true and addresses are provided
         if (!setupModelBtcLn.UseLiquidBoltz || setupModelBtcLn.LiquidAddresses == null || !setupModelBtcLn.LiquidAddresses.Any())
@@ -211,12 +211,19 @@ public class AquaController : Controller
                 new SamrockProtocolResponse(false, $"{networkCode} is not supported on this server.", null);
             return;
         }
+        
+        if (string.IsNullOrEmpty(fingerprint) || !HDFingerprint.TryParse(fingerprint, out var hdFingerprint))
+        {
+            result.Results[key] =
+                new SamrockProtocolResponse(false, $"Invalid fingerprint for wallet supplied", null);
+            return;
+        }
 
         try
         {
             var network = _explorerProvider.GetNetwork(networkCode);
             var strategy = ParseDerivationStrategy(derivationScheme, network);
-            strategy.AccountKeySettings[0].RootFingerprint = HDFingerprint.Parse(fingerprint);
+            strategy.AccountKeySettings[0].RootFingerprint = hdFingerprint;
             strategy.AccountKeySettings[0].AccountKeyPath = new KeyPath(derivationPath);
 
             var wallet = _walletProvider.GetWallet(network);
