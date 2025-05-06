@@ -156,15 +156,21 @@ public class BoltzExchangerService : IDisposable
                 swap.OriginalInvoice.Status = LightningInvoiceStatus.Paid;
                 swap.OriginalInvoice.PaidAt = DateTimeOffset.UtcNow;
 
+                // Publish the event for the listener to pick up
+                var paidEvent = new BoltzSwapPaidEvent(swap.Id);
+                EventAggregator.Publish(paidEvent);
+
+                // Once paid, we can unsubscribe from updates for this swap
+                // Use CancellationToken.None as this is a background task
+                await _webSocketService.UnsubscribeFromSwapStatusAsync(swap.Id, CancellationToken.None);
+            }
+            else if (update.Status.ToLowerInvariant() == "transaction.mempool")
+            {
                 // Ensure preimage is included in the invoice object before publishing
                 if (swap.Preimage != null)
                     swap.OriginalInvoice.Preimage = Convert.ToHexString(swap.Preimage).ToLowerInvariant();
                 else
                     _logger.LogWarning($"Preimage is null for paid swap {swap.Id} when preparing BoltzSwapPaidEvent.");
-
-                // Publish the event for the listener to pick up
-                var paidEvent = new BoltzSwapPaidEvent(swap.Id);
-                EventAggregator.Publish(paidEvent);
 
                 // Invoke the claimer to claim the swap
                 var transactionHex = await InvokeClaimerForPaidSwap(swap);
@@ -181,10 +187,6 @@ public class BoltzExchangerService : IDisposable
                     else
                         _logger.LogWarning($"Failed to broadcast transaction for swap {swap.Id} through Boltz API");
                 }
-
-                // Once paid, we can unsubscribe from updates for this swap
-                // Use CancellationToken.None as this is a background task
-                await _webSocketService.UnsubscribeFromSwapStatusAsync(swap.Id, CancellationToken.None);
             }
             else if (IsFailedStatus(update.Status))
             {
