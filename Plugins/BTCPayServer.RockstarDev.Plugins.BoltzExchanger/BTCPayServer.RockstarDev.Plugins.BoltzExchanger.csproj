@@ -38,4 +38,19 @@
         <PackageReference Include="System.Net.Http.Json" Version="8.0.0"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="ClaimerExecutables\" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="ClaimerExecutables\claimer-windows-amd64.exe" />
+      <Content Include="ClaimerExecutables\claimer-windows-amd64.exe">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+      <None Remove="ClaimerExecutables\claimer-linux.tar.gz" />
+      <Content Include="ClaimerExecutables\claimer-linux.tar.gz">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
 </Project>

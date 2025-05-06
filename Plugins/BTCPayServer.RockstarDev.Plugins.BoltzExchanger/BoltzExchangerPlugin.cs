@@ -64,7 +64,7 @@ public class RuntimeWrapper
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            return Path.Combine(datadir, "Plugins", "BoltzExchanger", "claimer.exe");
+            return Path.Combine(datadir, "Plugins", "BoltzExchanger", "claimer-windows-amd64.exe");
         
         throw new NotSupportedException("Unsupported platform");
     }

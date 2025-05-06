@@ -452,3 +452,6 @@ $RECYCLE.BIN/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+Plugins/BTCPayServer.RockstarDev.Plugins.BoltzExchanger/ClaimerExecutables/claimer-linux-amd64
+Plugins/BTCPayServer.RockstarDev.Plugins.BoltzExchanger/ClaimerExecutables/claimer-linux-arm64
+!Plugins/BTCPayServer.RockstarDev.Plugins.BoltzExchanger/ClaimerExecutables/claimer-linux.tar.gz
