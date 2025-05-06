@@ -91,23 +91,23 @@ public class RuntimeWrapper
 
     public static void ExtractClaimerIfNeeded(string pluginDir)
     {
-        var claimerPath = CombineToPath(pluginDir, "");
-        var targzpath = CombineToPath(pluginDir, "claimer-linux.tar.gz");
+        var claimerExtractionDir = CombineToPath(pluginDir, ""); // Directory where files will be extracted
+        var targzPath = CombineToPath(pluginDir, "claimer-linux.tar.gz");
 
-        if (File.Exists(targzpath))
+        if (File.Exists(targzPath))
         {
             try
             {
-                using var fileStream = File.OpenRead(targzpath);
+                using var fileStream = File.OpenRead(targzPath);
                 using var gzip = new GZipStream(fileStream, CompressionMode.Decompress);
-                TarFile.ExtractToDirectory(gzip, claimerPath, true);
+                TarFile.ExtractToDirectory(gzip, claimerExtractionDir, true);
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error extracting claimer: {ex.Message}");
             }
             
-            File.Delete(targzpath);
+            File.Delete(targzPath);
         }
     }
 

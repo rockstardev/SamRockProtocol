@@ -243,11 +243,13 @@ public class BoltzExchangerService : IDisposable
             _logger.LogInformation($"Claimer command: claimer.exe {commandArgs}");
 
             var claimerPath = RuntimeWrapper.GetClaimerPath(_dataDirectories.Value.PluginDir);
-            
+            var claimerDir = Path.GetDirectoryName(claimerPath); // Get the directory
+
             var processStartInfo = new ProcessStartInfo
             {
                 FileName = claimerPath,
                 Arguments = commandArgs,
+                WorkingDirectory = claimerDir, // Set the working directory
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
