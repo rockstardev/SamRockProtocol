@@ -22,8 +22,10 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
 
     public override void Execute(IServiceCollection services)
     {
-        // Check if the plugin is ran on supported platform and if not error will be throw so we exit right away
-        _ = RuntimeWrapper.GetClaimerPath("");
+        if (RuntimeWrapper.IsUnsupportedPlatform())
+            throw new NotSupportedException("Unsupported platform. Only Linux and Windows are supported.");
+        
+        
         
         // Register HttpClientFactory if not already registered (usually is)
         services.AddHttpClient();
@@ -67,5 +69,10 @@ public class RuntimeWrapper
             return Path.Combine(datadir, "Plugins", "BoltzExchanger", "claimer-windows-amd64.exe");
         
         throw new NotSupportedException("Unsupported platform");
+    }
+    
+    public static bool IsUnsupportedPlatform()
+    {
+        return !RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     }
 }
