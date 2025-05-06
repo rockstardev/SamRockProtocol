@@ -11,14 +11,18 @@ using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
 using BTCPayServer.Payments;
+using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using BTCPayServer.Services.Wallets;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NBitcoin;
 using Newtonsoft.Json;
 using NicolasDorier.RateLimits;
+using BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
 namespace Aqua.BTCPayPlugin.Controllers;
 
@@ -32,6 +36,8 @@ public class AquaController : Controller
     private readonly SamrockProtocolHostedService _samrockProtocolService;
     private readonly StoreRepository _storeRepository;
     private readonly BTCPayWalletProvider _walletProvider;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<AquaController> _logger;
 
     public AquaController(
         SamrockProtocolHostedService samrockProtocolService,
@@ -39,7 +45,9 @@ public class AquaController : Controller
         ExplorerClientProvider explorerProvider,
         BTCPayWalletProvider walletProvider,
         StoreRepository storeRepository,
-        EventAggregator eventAggregator)
+        EventAggregator eventAggregator,
+        IServiceProvider serviceProvider,
+        ILogger<AquaController> logger)
     {
         _samrockProtocolService = samrockProtocolService;
         _handlers = handlers;
@@ -47,6 +55,8 @@ public class AquaController : Controller
         _walletProvider = walletProvider;
         _storeRepository = storeRepository;
         _eventAggregator = eventAggregator;
+        _serviceProvider = serviceProvider;
+        _logger = logger;
     }
 
     [FromRoute]
@@ -129,9 +139,10 @@ public class AquaController : Controller
             await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.Fingerprint,
                 setupModel.BtcChain.DerivationPath, "BTC", storeData, SamrockProtocolKeys.BtcChain, result);
         if (setupModel.LiquidChain != null)
-            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.BtcChain.Fingerprint,
+            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.Fingerprint,
                 setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
-        // TODO: Add support for lightning
+        if (setupModel.BtcLn != null)
+            await SetupLightning(setupModel.BtcLn, result);
 
         var allSuccess = result.Results.Values.All(a => a.Success);
         _samrockProtocolService.OtpUsed(otp, allSuccess);
@@ -141,6 +152,54 @@ public class AquaController : Controller
             Message = "Wallet setup successfully.",
             Result = result
         });
+    }
+
+    private async Task SetupLightning(BtcLnSetupModel setupModelBtcLn, SamrockProtocolSetupResponse result)
+    {
+        var isBoltzPluginLoaded = _serviceProvider.GetService<BoltzExchangerService>() != null;
+        if (!isBoltzPluginLoaded)
+        {
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Boltz Exchanger Plugin is required but not loaded.", null);
+            return;
+        }
+
+        // Only proceed if UseLiquidBoltz is true and addresses are provided
+        if (!setupModelBtcLn.UseLiquidBoltz || setupModelBtcLn.LiquidAddresses == null || !setupModelBtcLn.LiquidAddresses.Any())
+        {
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false,
+                "Liquid Boltz setup requested but required data (UseLiquidBoltz=true, LiquidAddresses) is missing.", null);
+            return;
+        }
+
+        try
+        {
+            var storeData = await _storeRepository.FindStore(StoreId);
+            if (storeData == null)
+            {
+                result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Store not found.", null);
+                return;
+            }
+
+            // Construct the connection string
+            var addresses = string.Join(",", setupModelBtcLn.LiquidAddresses);
+            var connectionString = $"type=boltzexchanger;swap-to=L-BTC;apiurl=https://api.boltz.exchange/;swap-address={addresses}";
+
+            var paymentMethodId = PaymentTypes.LN.GetPaymentMethodId("BTC");
+
+            var paymentMethod = new LightningPaymentMethodConfig { ConnectionString = connectionString };
+
+            // Update the settings in the store
+            storeData.SetPaymentMethodConfig(_handlers[paymentMethodId], paymentMethod);
+
+            // Save the store
+            await _storeRepository.UpdateStore(storeData);
+
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, "Lightning payment method configured for Boltz Exchanger.", null);
+        }
+        catch (Exception ex)
+        {
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "An error occurred while configuring Lightning settings.", ex);
+        }
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string fingerprint, string derivationPath, string networkCode,
@@ -316,6 +375,7 @@ public class LiquidChainSetupModel
 public class BtcLnSetupModel
 {
     public bool UseLiquidBoltz { get; set; }
+    public string[] LiquidAddresses { get; set; }
 }
 
 public enum AddressTypes
