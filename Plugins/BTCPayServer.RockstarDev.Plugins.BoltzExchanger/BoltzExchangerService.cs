@@ -142,31 +142,9 @@ public class BoltzExchangerService : IDisposable
         {
             swap.LastStatusUpdate = update; // Update latest status
 
-            // Check if the swap status indicates payment or completion
-            // Adjust these statuses based on Boltz documentation for reverse swaps!
-            var paidStatuses = new[] { "invoice.paid", "swap.claimed", "transaction.claimed", "transaction.confirmed" }; // Example statuses
-            var isPaid = paidStatuses.Contains(update.Status?.ToLowerInvariant());
-
-            if (isPaid && !swap.IsPaid)
+            // step 1 - when we receive transaction in mempool, we need to broadcast swap
+            if (update.Status.ToLowerInvariant() == "transaction.mempool")
             {
-                _logger.LogInformation($"Swap {update.Id} detected as PAID (Status: {update.Status}). Publishing event.");
-                swap.IsPaid = true;
-
-                // Update the stored invoice status and add preimage
-                swap.OriginalInvoice.Status = LightningInvoiceStatus.Paid;
-                swap.OriginalInvoice.PaidAt = DateTimeOffset.UtcNow;
-
-                // Publish the event for the listener to pick up
-                var paidEvent = new BoltzSwapPaidEvent(swap.Id);
-                EventAggregator.Publish(paidEvent);
-
-                // Once paid, we can unsubscribe from updates for this swap
-                // Use CancellationToken.None as this is a background task
-                await _webSocketService.UnsubscribeFromSwapStatusAsync(swap.Id, CancellationToken.None);
-            }
-            else if (update.Status.ToLowerInvariant() == "transaction.mempool")
-            {
-                // Ensure preimage is included in the invoice object before publishing
                 if (swap.Preimage != null)
                     swap.OriginalInvoice.Preimage = Convert.ToHexString(swap.Preimage).ToLowerInvariant();
                 else
@@ -188,6 +166,25 @@ public class BoltzExchangerService : IDisposable
                         _logger.LogWarning($"Failed to broadcast transaction for swap {swap.Id} through Boltz API");
                 }
             }
+            // step 2 once we receive notice that invoice is settled from boltz - we need to update invoice
+            else if (update.Status.ToLowerInvariant() == "invoice.settled")
+            {
+                _logger.LogInformation($"Swap {update.Id} detected as PAID (Status: {update.Status}). Publishing event.");
+                swap.IsPaid = true;
+
+                // Update the stored invoice status and add preimage
+                swap.OriginalInvoice.Status = LightningInvoiceStatus.Paid;
+                swap.OriginalInvoice.PaidAt = DateTimeOffset.UtcNow;
+
+                // Publish the event for the listener to pick up
+                var paidEvent = new BoltzSwapPaidEvent(swap.Id);
+                EventAggregator.Publish(paidEvent);
+
+                // Once paid, we can unsubscribe from updates for this swap
+                // Use CancellationToken.None as this is a background task
+                await _webSocketService.UnsubscribeFromSwapStatusAsync(swap.Id, CancellationToken.None);
+            }
+            // optionally - handle failed states
             else if (IsFailedStatus(update.Status))
             {
                 _logger.LogWarning($"Swap {update.Id} failed (Status: {update.Status}). Notifying listener of failure.");
