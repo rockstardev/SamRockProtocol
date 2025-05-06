@@ -240,7 +240,7 @@ public class BoltzExchangerService : IDisposable
             // Log the full command for debugging
             _logger.LogInformation($"Claimer command: claimer.exe {commandArgs}");
 
-            var claimerPath = RuntimeWrapper.GetClaimerPath(_dataDirectories.Value.DataDir);
+            var claimerPath = RuntimeWrapper.GetClaimerPath(_dataDirectories.Value.PluginDir);
             
             var processStartInfo = new ProcessStartInfo
             {
