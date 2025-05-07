@@ -51,7 +51,7 @@ public class BoltzLightningConnectionStringHandler(IHttpClientFactory httpClient
         // --- Updated: Parse and Validate Multiple Destination Addresses ---
         if (!kv.TryGetValue("swap-addresses", out var swapAddressesStr) || string.IsNullOrWhiteSpace(swapAddressesStr))
         {
-            error = "The key 'swap-address' is missing or empty in the connection string.";
+            error = "The key 'swap-addresses' is missing or empty in the connection string.";
             return null;
         }
 

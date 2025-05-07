@@ -190,7 +190,10 @@ public class AquaController : Controller
 
             // Update the settings in the store
             storeData.SetPaymentMethodConfig(_handlers[paymentMethodId], paymentMethod);
-
+            var blob = storeData.GetStoreBlob();
+            blob.SetExcluded(paymentMethodId, false); // enable lightning
+            storeData.SetStoreBlob(blob);
+            
             // Save the store
             await _storeRepository.UpdateStore(storeData);
 
