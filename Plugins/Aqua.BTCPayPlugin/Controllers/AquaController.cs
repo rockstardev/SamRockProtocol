@@ -182,7 +182,7 @@ public class AquaController : Controller
 
             // Construct the connection string
             var addresses = string.Join(",", setupModelBtcLn.LiquidAddresses);
-            var connectionString = $"type=boltzexchanger;swap-to=L-BTC;apiurl=https://api.boltz.exchange/;swap-address={addresses}";
+            var connectionString = $"type=boltzexchanger;apiurl=https://api.boltz.exchange/;swap-addresses={addresses}";
 
             var paymentMethodId = PaymentTypes.LN.GetPaymentMethodId("BTC");
 

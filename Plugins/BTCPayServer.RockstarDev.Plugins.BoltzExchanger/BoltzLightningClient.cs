@@ -16,6 +16,7 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
     private readonly BoltzExchangerService _boltzExchangerService;
     private readonly HttpClient _httpClient;
     private readonly BoltzOptions _options;
+    private static readonly Random _random = new Random(); // Added for random address selection
 
     public BoltzLightningClient(BoltzOptions options, HttpClient httpClient, BoltzExchangerService boltzExchangerService,
         ILogger<BoltzLightningClient> logger)
@@ -44,12 +45,21 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
         _logger.LogInformation($"CreateInvoice called: Amount={amount}, Description='{description}', Expiry={expiry}");
         if (!string.IsNullOrEmpty(description)) _logger.LogWarning("Boltz CreateInvoice does not use the 'description' field.");
 
-        // Input validation (Basic)
         if (amount == null || amount <= LightMoney.Zero)
         {
             _logger.LogError("Invalid amount for CreateInvoice.");
             throw new Exception("Invalid amount for CreateInvoice.");
         }
+        if (_options.SwapAddresses == null || _options.SwapAddresses.Length == 0)
+        {
+            _logger.LogError("No swap addresses configured.");
+            throw new InvalidOperationException("No swap addresses configured in BoltzOptions.");
+        }
+        
+        // end of validation
+
+        var randomSwapAddress = _options.SwapAddresses[_random.Next(_options.SwapAddresses.Length)];
+        _logger.LogInformation($"Selected swap address for this transaction: {randomSwapAddress}");
 
         try
         {
@@ -67,9 +77,9 @@ public partial class BoltzLightningClient : ILightningClient, IDisposable
             // 3. Call Boltz API to create reverse swap
             var request = new CreateReverseSwapRequest
             {
-                Address = _options.SwapAddress,
+                Address = randomSwapAddress,
                 From = "BTC", // We receive BTC (Lightning)
-                To = _options.SwapTo, // We send L-BTC (on-chain)
+                To = _options.SwapTo, // We swap to L-BTC (on-chain)
                 InvoiceAmountSat = (long)amount.ToUnit(LightMoneyUnit.Satoshi),
                 PreimageHash = preimageHashHex,
                 ClaimPublicKey = claimPrivateKey.PubKey.ToHex() // Provide the public key for the claim script

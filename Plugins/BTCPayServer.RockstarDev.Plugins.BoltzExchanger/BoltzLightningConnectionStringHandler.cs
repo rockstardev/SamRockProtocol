@@ -4,23 +4,14 @@ using System.Net.Http;
 using BTCPayServer.Lightning;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using NBitcoin.Altcoins;
+using System.Linq;
 
 namespace BTCPayServer.RockstarDev.Plugins.BoltzExchanger;
 
-public class BoltzLightningConnectionStringHandler : ILightningConnectionStringHandler
+public class BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzExchangerService service, ILoggerFactory loggerFactory)
+    : ILightningConnectionStringHandler
 {
-    private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILoggerFactory _loggerFactory;
-    private readonly BoltzExchangerService _service;
-
-    // Inject required services
-    public BoltzLightningConnectionStringHandler(IHttpClientFactory httpClientFactory, BoltzExchangerService service, ILoggerFactory loggerFactory)
-    {
-        _httpClientFactory = httpClientFactory;
-        _service = service;
-        _loggerFactory = loggerFactory;
-    }
-
     public ILightningClient? Create(string connectionString, Network network, out string? error)
     {
         try
@@ -34,7 +25,6 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
         }
     }
 
-    // Renamed from Parse and updated return type and logic
     private ILightningClient? CreateInternal(string connectionString, Network network, out string? error)
     {
         var kv = LightningConnectionStringHelper.ExtractValues(connectionString, out var type);
@@ -58,50 +48,39 @@ public class BoltzLightningConnectionStringHandler : ILightningConnectionStringH
             return null;
         }
 
-        if (!kv.TryGetValue("swap-to", out var swapToAsset) || string.IsNullOrWhiteSpace(swapToAsset))
-            // Default or validation?
-            swapToAsset = "L-BTC"; // Assuming default for now
-        // error = "Missing 'swap-to' parameter.";
-        // return false;
-
-        // --- New: Parse and Validate Destination Address ---
-        if (!kv.TryGetValue("swap-address", out var swapAddress) || string.IsNullOrWhiteSpace(swapAddress))
+        // --- Updated: Parse and Validate Multiple Destination Addresses ---
+        if (!kv.TryGetValue("swap-addresses", out var swapAddressesStr) || string.IsNullOrWhiteSpace(swapAddressesStr))
         {
             error = "The key 'swap-address' is missing or empty in the connection string.";
             return null;
         }
 
-        // try
-        // {
-        //     // Basic validation: Check if it's a valid BitcoinAddress for the target network
-        //     // Note: This doesn't guarantee it's a *Liquid* address specifically, 
-        //     // but it's a good first step. More robust validation might be needed.
-        //     BitcoinAddress.Create(destinationAddressStr, network);
-        //     // TODO: Add specific check for Liquid address format if NBitcoin supports it easily.
-        // }
-        // catch (FormatException)
-        // {
-        //     error = $"'swap-address' ('{destinationAddressStr}') is not a valid address format for the network '{network.Name}'.";
-        //     return null;
-        // }
+        var lbtcAddresses = swapAddressesStr.Split(',').Select(s => s.Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+
+        if (lbtcAddresses.Length == 0)
+        {
+            error = "The key 'swap-addresses' must contain at least one valid address.";
+            return null;
+        }
+
+        // TODO: Validate addresses
 
         var options = new BoltzOptions
         {
             ApiUrl = apiUrl,
-            SwapTo = swapToAsset, // Assuming BTC Lightning is what user receives
-            SwapAddress = swapAddress // Store the validated address
+            SwapTo = "L-BTC", // for now we only do swap to L-BTC
+            SwapAddresses = lbtcAddresses
         };
 
         // Create HttpClient instance
-        var httpClient = _httpClientFactory.CreateClient(nameof(BoltzLightningClient));
-        // Consider configuring base address or other HttpClient options here if needed
-        // httpClient.BaseAddress = options.ApiUrl; // BaseAddress is set in BoltzLightningClient constructor
+        var httpClient = httpClientFactory.CreateClient(nameof(BoltzLightningClient));
 
         // Create Logger instance
-        var logger = _loggerFactory.CreateLogger<BoltzLightningClient>();
+        var logger = loggerFactory.CreateLogger<BoltzLightningClient>();
 
         // Instantiate the client
-        var client = new BoltzLightningClient(options, httpClient, _service, logger);
+        var client = new BoltzLightningClient(options, httpClient, service, logger);
 
         error = null;
         return client;

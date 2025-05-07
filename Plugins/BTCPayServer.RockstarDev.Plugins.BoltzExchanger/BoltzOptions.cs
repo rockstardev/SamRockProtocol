@@ -10,7 +10,7 @@ public class BoltzOptions
 {
     public required Uri ApiUrl { get; init; }
     public required string SwapTo { get; init; } // Asset user receives (e.g., L-BTC)
-    public required string SwapAddress { get; init; } // The final Liquid address for claimed funds
+    public required string[] SwapAddresses { get; init; }
 
     public bool IsTestnet => ApiUrl?.ToString().Contains(".testnet.") ?? false;
 }
