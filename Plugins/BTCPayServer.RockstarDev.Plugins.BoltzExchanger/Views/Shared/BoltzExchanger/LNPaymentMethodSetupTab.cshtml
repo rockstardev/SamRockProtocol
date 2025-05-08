@@ -1,0 +1,40 @@
+@model BTCPayServer.Models.StoreViewModels.LightningNodeViewModel
+@{
+    var storeId = Model.StoreId;
+    if (Model.CryptoCode != "BTC")
+    {
+        return;
+    }
+}
+
+<!-- need asp-add-nonce="true" to work with localhost debugging -->
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const customNodeAccordian = document.getElementById("CustomNodeSupport");
+        const template = document.getElementById("boltzexchanger");
+        customNodeAccordian.appendChild(template.content.cloneNode(true));
+    });
+</script>
+
+<template id="boltzexchanger">
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="CustomBoltzExchangerHeader">
+            <button type="button" class="accordion-button collapsed" data-bs-toggle="collapse" data-bs-target="#CustomBoltzExchangerContent"
+                    aria-controls="CustomBoltzExchangerContent" aria-expanded="false">
+                <span><strong>Boltz Exchanger</strong> via boltz api</span>
+                <vc:icon symbol="caret-down" />
+            </button>
+        </h2>
+        <div id="CustomBoltzExchangerContent" class="accordion-collapse collapse" aria-labelledby="CustomBoltzExchangerHeader"
+             data-bs-parent="#CustomNodeSupport">
+            <div class="accordion-body">
+                <ul class="pb-2">
+                    <li>
+                        <code><b>type=</b>boltzexchanger;<b>apiurl=</b>https://api.boltz.exchange/;<b>swap-addresses=</b>comma separated list of lbtc addresses</code>
+                    </li>
+                </ul>
+                <p class="my-2">Connects to an instance of Boltz API and generates lightning payments that will be swapped to liquid addresses provided</p>
+            </div>
+        </div>
+    </div>
+</template>

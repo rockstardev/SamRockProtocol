@@ -42,7 +42,10 @@ public class BoltzExchangerPlugin : BaseBTCPayServerPlugin
             
         // Register HttpClientFactory if not already registered (usually is)
         services.AddHttpClient();
-
+        
+        // Register 
+        services.AddUIExtension("ln-payment-method-setup-tab", "BoltzExchanger/LNPaymentMethodSetupTab");
+        
         // Register the WebSocket service as a singleton hosted service
         services.AddSingleton<BoltzWebSocketService>();
         services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<BoltzWebSocketService>());
