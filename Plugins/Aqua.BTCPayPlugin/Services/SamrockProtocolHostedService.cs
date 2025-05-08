@@ -57,6 +57,11 @@ public class SamrockProtocolHostedService(
         _samrockImportDictionary.Add(random21Charstring, model);
     }
 
+    public void Remove(string random21Charstring)
+    {
+        _samrockImportDictionary.Remove(random21Charstring);
+    }
+
     public bool TryGet(string otp, out ImportWalletsViewModel model)
     {
         if (_samrockImportDictionary.TryGetValue(otp, out var value))

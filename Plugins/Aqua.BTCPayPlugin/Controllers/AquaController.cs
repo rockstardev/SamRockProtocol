@@ -62,13 +62,13 @@ public class AquaController : Controller
     [FromRoute]
     public string StoreId { get; set; }
 
-    [HttpGet("testjson")]
+    [HttpGet("TestJson")]
     public IActionResult TestJson()
     {
         return View();
     }
 
-    [HttpGet("import-wallets")]
+    [HttpGet("ImportWallets")]
     public IActionResult ImportWallets()
     {
         var model = new ImportWalletsViewModel
@@ -81,7 +81,7 @@ public class AquaController : Controller
         return View(model);
     }
 
-    [HttpPost("import-wallets")]
+    [HttpPost("ImportWallets")]
     public IActionResult ImportWallets(ImportWalletsViewModel model)
     {
         if (!ModelState.IsValid || (!model.BtcChain && !model.BtcLn && !model.LiquidChain))
@@ -99,14 +99,24 @@ public class AquaController : Controller
         return View(model);
     }
 
-    [HttpGet("import-wallets/status")]
-    public IActionResult ImportWalletStatus()
+    [HttpPost("ImportWalletsClear")]
+    public IActionResult ImportWalletsClear(ImportWalletsViewModel model)
+    {
+        if (!string.IsNullOrEmpty(model.Otp))
+        {
+            _samrockProtocolService.Remove(model.Otp);
+        }
+        return RedirectToAction(nameof(ImportWallets), new { storeId = model.StoreId });
+    }
+
+    [HttpGet("ImportWalletsStatus")]
+    public IActionResult ImportWalletsStatus()
     {
         var otp = Request.Query["otp"].ToString();
         return Ok(new { status = _samrockProtocolService.OtpStatus(otp)?.ToString().ToLowerInvariant() });
     }
 
-    [HttpGet("import-result")]
+    [HttpGet("ImportResult")]
     public IActionResult ImportResult(string otp)
     {
         var otpStatus = _samrockProtocolService.OtpStatus(otp);
