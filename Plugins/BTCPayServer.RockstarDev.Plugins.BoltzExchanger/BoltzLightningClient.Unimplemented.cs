@@ -22,7 +22,8 @@ public partial class BoltzLightningClient
     public Task<LightningNodeInformation> GetInfo(CancellationToken cancellationToken = default)
     {
         //_logger.LogWarning("GetInfo is not meaningfully implemented for Boltz client.");
-        return Task.FromResult(new LightningNodeInformation());
+        throw new NotSupportedException("GetInfo is not meaningfully implemented for Boltz client.");
+        //return Task.FromResult(new LightningNodeInformation());
     }
 
     public Task<LightningNodeBalance> GetBalance(CancellationToken cancellationToken = default)
