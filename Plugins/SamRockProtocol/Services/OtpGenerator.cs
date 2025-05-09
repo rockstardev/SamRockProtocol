@@ -1,6 +1,8 @@
 using System.Linq;
 using System.Security.Cryptography;
 
+namespace SamRockProtocol.Services;
+
 public class OtpGenerator
 {
     private static readonly char[] AllowedChars =

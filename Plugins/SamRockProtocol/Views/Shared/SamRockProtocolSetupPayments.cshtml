@@ -1,6 +1,5 @@
 @using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Data
-@using BTCPayServer.Security
 @using Microsoft.AspNetCore.Identity
 @inject SignInManager<ApplicationUser> SignInManager;
 @inject IScopeProvider ScopeProvider
@@ -9,7 +8,7 @@
 }
 @if (SignInManager.IsSignedIn(User) && !string.IsNullOrEmpty(storeId))
 {
-    <a asp-controller="Aqua" asp-action="ImportWallets" asp-route-storeId="@Model.StoreId"
+    <a asp-controller="Setup" asp-action="ImportWallets" asp-route-storeId="@Model.StoreId"
        id="SetupGuide-Samrock" class="list-group-item list-group-item-action d-flex align-items-center order-1">
         <vc:icon symbol="wallet-new" />
         <div class="content">

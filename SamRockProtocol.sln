@@ -21,7 +21,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ConfigBuilder", "ConfigBuil
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Plugins", "Plugins", "{07D57EEB-2F50-60C4-C011-FE4FA775C9A8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aqua.BTCPayPlugin", "Plugins\Aqua.BTCPayPlugin\Aqua.BTCPayPlugin.csproj", "{427E9619-9D34-4DC8-A376-4804293207BE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamRockProtocol", "Plugins\SamRockProtocol\SamRockProtocol.csproj", "{427E9619-9D34-4DC8-A376-4804293207BE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer.RockstarDev.Plugins.BoltzExchanger", "Plugins\BTCPayServer.RockstarDev.Plugins.BoltzExchanger\BTCPayServer.RockstarDev.Plugins.BoltzExchanger.csproj", "{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}"
 EndProject

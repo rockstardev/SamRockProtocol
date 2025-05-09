@@ -1,11 +1,11 @@
 using System;
-using Aqua.BTCPayPlugin.Services;
 using BTCPayServer;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
 using Microsoft.Extensions.DependencyInjection;
+using SamRockProtocol.Services;
 
-namespace Aqua.BTCPayPlugin;
+namespace SamRockProtocol;
 
 public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
 {

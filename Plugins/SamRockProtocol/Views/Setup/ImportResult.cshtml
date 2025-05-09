@@ -1,8 +1,8 @@
-@using Aqua.BTCPayPlugin.Views
 @using BTCPayServer.Abstractions.Extensions
-@model Aqua.BTCPayPlugin.Controllers.ImportResultViewModel
+@using SamRockProtocol.Views
+@model SamRockProtocol.Controllers.ImportResultViewModel
 @{
-    ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "Aqua Wallet Import Result");
+    ViewData.SetActivePage(PluginNavPages.ImportWallets, "Aqua Wallet Import Result");
 }
 
 @switch (Model.OtpStatus)

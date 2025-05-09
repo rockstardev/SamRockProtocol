@@ -1,9 +1,8 @@
-@using Aqua.BTCPayPlugin
-@using Aqua.BTCPayPlugin.Views
 @using BTCPayServer.Abstractions.Extensions
-@model Aqua.BTCPayPlugin.Controllers.ImportWalletsViewModel
+@using SamRockProtocol.Views
+@model SamRockProtocol.Controllers.ImportWalletsViewModel
 @{
-    ViewData.SetActivePage(PluginNavPages.AquaImportWallets, "SamRock Protocol", Model.StoreId);
+    ViewData.SetActivePage(PluginNavPages.ImportWallets, "SamRock Protocol", Model.StoreId);
 }
 <h1 id="import-wallets-title">@ViewData["Title"]</h1>
 
@@ -12,9 +11,9 @@
     <form id="walletSettingsForm" method="post">
         <div class="form-group my-4">
             <p class="lead my-3">
-            Based on your selection below (Bitcoin, Lightning, Liquid), unique QR code will be generated.
-            Simply scan this QR code with wallet supporting SamRock Protocol, and your BTCPay Server
-            will be configured to forward incoming payments to it.
+                Based on your selection below (Bitcoin, Lightning, Liquid), unique QR code will be generated.
+                Simply scan this QR code with wallet supporting SamRock Protocol, and your BTCPay Server
+                will be configured to forward incoming payments to it.
             </p>
         </div>
         <div class="form-group my-4">
@@ -56,17 +55,17 @@ else
     <div class="my-4">
         <div class="form-group my-4">
             <p class="lead my-3">
-                SamRock protocol empowers you to maintain self-custody of your funds on compatible mobile wallets 
+                SamRock protocol empowers you to maintain self-custody of your funds on compatible mobile wallets
                 while seamlessly connecting them to your BTCPay Server.
                 Scan the QR code below with your wallet app to initiate the setup process.
             </p>
         </div>
         <div id="qrCode" class="d-inline-block position-relative">
-                <vc:qr-code data="@(Model.QrCode)" />
+            <vc:qr-code data="@(Model.QrCode)" />
         </div>
         <form method="post" action="ImportWalletsClear" class="mt-3">
-            @Html.HiddenFor(a=>a.Otp)
-            @Html.HiddenFor(a=>a.StoreId)
+            @Html.HiddenFor(a => a.Otp)
+            @Html.HiddenFor(a => a.StoreId)
             <button name="command" type="submit" class="btn btn-outline-primary my-4" value="ClearQRCode">Clear and start over</button>
         </form>
     </div>
@@ -83,9 +82,11 @@ else
             </div>
             <p class="mb-2 mt-1 small text-muted">The Bitcoin Superapp for Financial Freedom</p>
             <div class="mt-2">
-                <a href="https://apps.apple.com/us/app/aqua-wallet/id6468594241" target="_blank" rel="noopener noreferrer" class="btn btn-link ps-0">iOS Download</a>
+                <a href="https://apps.apple.com/us/app/aqua-wallet/id6468594241" target="_blank" rel="noopener noreferrer" class="btn btn-link ps-0">iOS
+                    Download</a>
                 <span class="text-muted mx-1">|</span>
-                <a href="https://play.google.com/store/apps/details?id=io.aquawallet.android" target="_blank" rel="noopener noreferrer" class="btn btn-link">Android Download</a>
+                <a href="https://play.google.com/store/apps/details?id=io.aquawallet.android" target="_blank" rel="noopener noreferrer" class="btn btn-link">Android
+                    Download</a>
             </div>
         </div>
         <!-- Future wallets can be added here -->
@@ -100,7 +101,7 @@ else
     document.addEventListener("DOMContentLoaded", function () {
         const otp = "@Model.Otp";
         const statusUrl = "@Model.QrCode"
-                .replace("/aqua/samrockprotocol", "/aqua/ImportWalletsStatus").split('?')[0]
+                .replace("/samrock/protocol", "/samrock/ImportWalletsStatus").split('?')[0]
             + "?otp=" + otp;
         let attempts = 0;
 

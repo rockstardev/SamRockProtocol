@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Aqua.BTCPayPlugin.Controllers;
 using BTCPayServer;
 using BTCPayServer.HostedServices;
 using Microsoft.Extensions.Logging;
 using NicolasDorier.RateLimits;
+using SamRockProtocol.Controllers;
 
-namespace Aqua.BTCPayPlugin.Services;
+namespace SamRockProtocol.Services;
 
 public class SamrockProtocolHostedService(
     EventAggregator eventAggregator,

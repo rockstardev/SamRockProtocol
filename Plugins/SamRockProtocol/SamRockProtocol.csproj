@@ -2,16 +2,16 @@
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
         <LangVersion>12</LangVersion>
-        <RootNamespace>Aqua.BTCPayPlugin</RootNamespace>
+        <RootNamespace>SamRockProtocol</RootNamespace>
     </PropertyGroup>
 
     <!-- Plugin specific properties -->
     <PropertyGroup>
-        <Product>zzz - SamRock Protocol</Product>
+        <Product>SamRock Protocol</Product>
         <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** SamRock protocol provides ability to import wallet derivation keys in BTCPay.
             Try it out with Aqua Wallet!
         </Description>
-        <Version>1.0.16</Version>
+        <Version>0.0.16</Version>
     </PropertyGroup>
 
     <!-- Plugin development properties -->
