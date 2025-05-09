@@ -6,9 +6,7 @@
         return;
     }
 }
-
-<!-- need asp-add-nonce="true" to work with localhost debugging -->
-<script>
+<script asp-add-nonce="true">
     document.addEventListener("DOMContentLoaded", function () {
         const customNodeAccordian = document.getElementById("CustomNodeSupport");
         const template = document.getElementById("boltzexchanger");
