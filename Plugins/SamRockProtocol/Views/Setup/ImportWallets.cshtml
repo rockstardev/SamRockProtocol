@@ -52,23 +52,32 @@
 }
 else
 {
-    <div class="my-4">
-        <div class="form-group my-4">
-            <p class="lead my-3">
-                SamRock protocol empowers you to maintain self-custody of your funds on compatible mobile wallets
-                while seamlessly connecting them to your BTCPay Server.
-                Scan the QR code below with your wallet app to initiate the setup process.
-            </p>
-        </div>
-        <div id="qrCode" class="d-inline-block position-relative">
-            <vc:qr-code data="@(Model.QrCode)" />
-        </div>
-        <form method="post" action="ImportWalletsClear" class="mt-3">
-            @Html.HiddenFor(a => a.Otp)
-            @Html.HiddenFor(a => a.StoreId)
-            <button name="command" type="submit" class="btn btn-outline-primary my-4" value="ClearQRCode">Clear and start over</button>
-        </form>
+    <div class="form-group my-4">
+        <p class="lead my-3">
+            SamRock protocol empowers you to maintain self-custody of your funds on compatible mobile wallets
+            while seamlessly connecting them to your BTCPay Server.
+            Scan the QR code below with your wallet app to initiate the setup process.
+        </p>
     </div>
+    <div id="qrCode" class="d-inline-block position-relative">
+        <vc:qr-code data="@(Model.QrCode)" />
+    </div>
+    <div class="mt-3" style="max-width: 700px;">
+        <label for="qrCodeContent" class="form-label">QR Code Content:</label>
+        <div class="input-group">
+            <textarea id="qrCodeContent" class="form-control" rows="3" readonly>@Model.QrCode</textarea>
+            <!-- Hidden text area to copy the information -->
+            <textarea class="input-hidden" style="display: none;" readonly="readonly" id="mainCode">@Model.QrCode</textarea>
+            <button class="btn btn-primary" id="btnCopy" data-clipboard-target="#mainCode">
+                <vc:icon symbol="actions-copy" />
+            </button>
+        </div>
+    </div>
+    <form method="post" action="ImportWalletsClear" class="mt-3">
+        @Html.HiddenFor(a => a.Otp)
+        @Html.HiddenFor(a => a.StoreId)
+        <button name="command" type="submit" class="btn btn-outline-primary my-4" value="ClearQRCode">Clear and start over</button>
+    </form>
 }
 
 <div class="mt-5 pt-4 border-top">
