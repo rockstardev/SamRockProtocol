@@ -28,6 +28,7 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
     {
         //services.AddUIExtension("store-wallets-nav", "AquaSidebarNav");
         services.AddUIExtension("dashboard-setup-guide-payment", "SamRockProtocolSetupPayments");
+        services.AddUIExtension("store-integrations-nav", "SamRockProtocolNav");
 
         services.AddSingleton<SamrockProtocolHostedService>();
         services.AddScheduledTask<SamrockProtocolHostedService>(TimeSpan.FromMinutes(1));

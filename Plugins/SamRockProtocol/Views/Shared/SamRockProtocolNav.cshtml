@@ -1,0 +1,20 @@
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@inject IScopeProvider ScopeProvider
+@{
+    var storeId = ScopeProvider.GetCurrentStoreId();
+}
+@if (!string.IsNullOrEmpty(storeId))
+{
+    <li class="nav-item">
+        <a asp-controller="Setup" asp-action="ImportWallets" asp-route-storeId="@storeId" class="nav-link @ViewData.ActivePageClass("SamRockProtocol")">
+
+            <svg xmlns="http://www.w3.org/2000/svg" style="width: 20px; margin-right: 6px;" viewBox="0 0 512 512" fill="currentColor">
+                <path
+                    d="M 80 420 L 120 250 Q 256 150 390 250 L 430 420 L 80 420 Z" />
+            </svg>
+
+            <span>SamRock Protocol</span>
+        </a>
+    </li>
+}
