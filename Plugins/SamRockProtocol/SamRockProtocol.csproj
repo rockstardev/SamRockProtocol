@@ -11,7 +11,7 @@
         <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** SamRock protocol provides ability to import wallet derivation keys in BTCPay.
             Try it out with Aqua Wallet!
         </Description>
-        <Version>0.0.16</Version>
+        <Version>0.0.17</Version>
     </PropertyGroup>
 
     <!-- Plugin development properties -->
