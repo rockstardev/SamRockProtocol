@@ -1,13 +1,26 @@
-# Aqua Plugin for BTCPay Server
+# SamRock Protocol for BTCPay Server
 
-This plugin allow for quick setup of receiving funds from your BTCPay Server store to your Aqua Wallet.
+This plugin enables quick setup for receiving funds from your BTCPay Server store directly to your self-custodial mobile wallet using the SamRock Protocol.
 
 ## Usage
 
-1. Install the plugin by navigating to BTCPay Server > Settings > Plugin > Available Plugins, and restart your server.
-2. Once installed, you'll see the `Setup with Aqua` link below wallets in BTCPay Server.
-3. Click the link, and you'll be presented with a form where you can define which wallets you want to setup with Aqua.
-4. QR code will be displayed, which you can scan with your Aqua Wallet to setup the necessary wallets
+1. Install the plugin by navigating to your BTCPay Server > Server Settings > Plugins, find "SamRock Protocol" in
+   Available Plugins, install it, and restart your server.
+2. Once installed, navigate to your Store > Plugins > SamRock Protocol
+3. You'll be presented with a form where you can select which payment methods you want to set up with your self-custodial wallet:
+    * Bitcoin (On-chain)
+    * Lightning (via Boltz API)
+    * Liquid (On-chain, if Liquid is enabled on your server)
+4. Click "Generate QR Code". A unique QR code will be displayed.
+5. Scan this QR code with a compatible mobile wallet that supports the SamRock Protocol (e.g., Aqua Wallet). This will configure the necessary wallets on your
+   mobile device and link them to your BTCPay Server store for receiving payments.
+
+## Compatible Wallets
+
+* **Aqua Wallet**: ([aqua.net](https://aqua.net))
+    * [iOS Download](https://apps.apple.com/us/app/aqua-wallet/id6468594241)
+    * [Android Download](https://play.google.com/store/apps/details?id=io.aquawallet.android)
 
 ## License
+
 https://github.com/rockstardev/Aqua.BTCPayPlugin/blob/master/LICENSE
