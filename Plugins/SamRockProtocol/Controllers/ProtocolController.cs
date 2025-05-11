@@ -23,7 +23,7 @@ using SamRockProtocol.Services;
 
 namespace SamRockProtocol.Controllers;
 
-[Microsoft.AspNetCore.Components.Route("~/plugins/{storeId}/samrock")]
+[Route("~/plugins/{storeId}/samrock")]
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ProtocolController(
     SamrockProtocolHostedService samrockProtocolService,
@@ -119,7 +119,7 @@ public class ProtocolController(
             // Save the store
             await storeRepository.UpdateStore(storeData);
 
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, "Lightning payment method configured for Boltz Exchanger.", null);
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, null, null);
         }
         catch (Exception ex)
         {
