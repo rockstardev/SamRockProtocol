@@ -65,6 +65,9 @@ public class ProtocolController(
                 setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
         if (setupModel.BtcLn != null)
             await SetupLightning(setupModel.BtcLn, result);
+        
+        // TODO: If both LBTC is set and BtcLn is set, need to generate as many addresses for LiquidChain
+        // as we have in setupModel.BtcLn.LiquidAddresses.Length to reserve them
 
         var allSuccess = result.Results.Values.All(a => a.Success);
         samrockProtocolService.OtpUsed(otp, allSuccess);
