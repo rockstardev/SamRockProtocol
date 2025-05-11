@@ -8,7 +8,7 @@
     <PropertyGroup>
         <Product>Boltz Exchanger</Product>
         <Description>Plugin for BTCPay Server to facilitate Bitcoin/Lightning/Liquid swaps via Boltz Exchange.</Description>
-        <Version>0.0.7</Version>
+        <Version>0.0.8</Version>
     </PropertyGroup>
 
 
