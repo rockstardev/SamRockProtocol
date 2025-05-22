@@ -1,4 +1,5 @@
 ﻿Microsoft Visual Studio Solution File, Format Version 12.00
+# 
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "BTCPay", "BTCPay", "{D455DCEA-D0E4-49CD-9ECC-5CFEDE9B3C61}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer", "submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj", "{BC92B9A2-FC8F-426D-8BBF-15EE629386A8}"
@@ -22,8 +23,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Plugins", "Plugins", "{07D57EEB-2F50-60C4-C011-FE4FA775C9A8}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamRockProtocol", "Plugins\SamRockProtocol\SamRockProtocol.csproj", "{427E9619-9D34-4DC8-A376-4804293207BE}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer.RockstarDev.Plugins.BoltzExchanger", "Plugins\BTCPayServer.RockstarDev.Plugins.BoltzExchanger\BTCPayServer.RockstarDev.Plugins.BoltzExchanger.csproj", "{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -155,18 +154,6 @@ Global
 		{DA6B20E5-5354-49D8-819B-76A3A6686429}.Release|x64.Build.0 = Release|Any CPU
 		{DA6B20E5-5354-49D8-819B-76A3A6686429}.Release|x86.ActiveCfg = Release|Any CPU
 		{DA6B20E5-5354-49D8-819B-76A3A6686429}.Release|x86.Build.0 = Release|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Debug|x64.Build.0 = Debug|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Debug|x86.Build.0 = Debug|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Release|Any CPU.Build.0 = Release|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Release|x64.ActiveCfg = Release|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Release|x64.Build.0 = Release|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Release|x86.ActiveCfg = Release|Any CPU
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -181,6 +168,5 @@ Global
 		{DA222C3F-5540-43B5-9D2F-A3D06A655A80} = {D455DCEA-D0E4-49CD-9ECC-5CFEDE9B3C61}
 		{5154C93F-69E4-4CA6-8ACD-44C140BE6CBD} = {D455DCEA-D0E4-49CD-9ECC-5CFEDE9B3C61}
 		{427E9619-9D34-4DC8-A376-4804293207BE} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
-		{245A23C9-A2A4-4543-BD95-7ADADBBEE28C} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 	EndGlobalSection
 EndGlobal

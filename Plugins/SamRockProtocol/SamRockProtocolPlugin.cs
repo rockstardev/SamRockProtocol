@@ -2,6 +2,9 @@ using System;
 using BTCPayServer;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
+using BTCPayServer.Plugins;
+using BTCPayServer.Plugins.Boltz;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.DependencyInjection;
 using SamRockProtocol.Services;
 
@@ -26,6 +29,16 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
 
     public override void Execute(IServiceCollection services)
     {
+        var boltzPlugin = new BoltzPlugin();
+        boltzPlugin.Execute(services);
+        var partManager = services.BuildServiceProvider().GetRequiredService<ApplicationPartManager>();
+        var pluginAssembly = typeof(BoltzPlugin).Assembly;
+        foreach (ApplicationPart applicationPart in ApplicationPartFactory.GetApplicationPartFactory(pluginAssembly).GetApplicationParts(pluginAssembly))
+        {
+            partManager.ApplicationParts.Add(applicationPart);
+        }
+
+
         //services.AddUIExtension("store-wallets-nav", "AquaSidebarNav");
         services.AddUIExtension("dashboard-setup-guide-payment", "SamRockProtocolSetupPayments");
         services.AddUIExtension("store-integrations-nav", "SamRockProtocolNav");
