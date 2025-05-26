@@ -6,9 +6,9 @@
 
     <!-- Plugin specific properties -->
     <PropertyGroup>
-        <Product>Boltz Exchanger</Product>
-        <Description>Plugin for BTCPay Server to facilitate Bitcoin/Lightning/Liquid swaps via Boltz Exchange.</Description>
-        <Version>0.0.8</Version>
+        <Product>zzz - Boltz Exchanger</Product>
+        <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** Plugin for BTCPay Server to facilitate Bitcoin/Lightning/Liquid swaps via Boltz Exchange.</Description>
+        <Version>0.0.9</Version>
     </PropertyGroup>
 
 
