@@ -31,8 +31,8 @@
     </ItemDefinitionGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj"/>
-        <EmbeddedResource Include="Resources\**"/>
-        <ProjectReference Include="..\BTCPayServer.RockstarDev.Plugins.BoltzExchanger\BTCPayServer.RockstarDev.Plugins.BoltzExchanger.csproj"/>
+        <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
+        <EmbeddedResource Include="Resources\**" />
+        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj" />
     </ItemGroup>
 </Project>

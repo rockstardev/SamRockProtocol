@@ -2,6 +2,9 @@ using System;
 using BTCPayServer;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
+using BTCPayServer.Plugins;
+using BTCPayServer.Plugins.Boltz;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.DependencyInjection;
 using SamRockProtocol.Services;
 
@@ -11,9 +14,8 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
 {
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
-        new() { Identifier = nameof(BTCPayServer), Condition = ">=2.0.0" },
-        // dependencies not working within BTCPay system
-        //new() { Identifier = "BTCPayServer.RockstarDev.Plugins.BoltzExchanger", Condition = ">=0.0.1" }
+        new() { Identifier = nameof(BTCPayServer), Condition = ">=2.1.6" },
+        new() { Identifier = "BTCPayServer.Plugins.Boltz", Condition = ">=2.1.12" }
     ];
 
     public static bool IsDevMode =>

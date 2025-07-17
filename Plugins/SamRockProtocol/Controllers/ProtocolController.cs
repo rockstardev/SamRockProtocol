@@ -16,10 +16,13 @@ using BTCPayServer.Data;
 using BTCPayServer.Events;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Lightning;
+using BTCPayServer.Plugins.Boltz;
 using NBitcoin;
 using Newtonsoft.Json;
 using NicolasDorier.RateLimits;
 using SamRockProtocol.Services;
+using Org.BouncyCastle.Asn1.Misc;
+using Grpc.Core;
 
 namespace SamRockProtocol.Controllers;
 
@@ -32,7 +35,7 @@ public class ProtocolController(
     BTCPayWalletProvider walletProvider,
     StoreRepository storeRepository,
     EventAggregator eventAggregator,
-    IServiceProvider serviceProvider,
+    BoltzService boltzService,
     ILogger<ProtocolController> logger)
     : Controller
 {
@@ -81,52 +84,33 @@ public class ProtocolController(
 
     private async Task SetupLightning(BtcLnSetupModel setupModelBtcLn, SamrockProtocolSetupResponse result)
     {
-        // var isBoltzPluginLoaded = _serviceProvider.GetService<BoltzExchangerService>() != null;
-        // if (!isBoltzPluginLoaded)
-        // {
-        //     result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Boltz Exchanger Plugin is required but not loaded.", null);
-        //     return;
-        // }
-
-        // Only proceed if UseLiquidBoltz is true and addresses are provided
-        if (!setupModelBtcLn.UseLiquidBoltz || setupModelBtcLn.LiquidAddresses == null || !setupModelBtcLn.LiquidAddresses.Any())
-        {
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false,
-                "Liquid Boltz setup requested but required data (UseLiquidBoltz=true, LiquidAddresses) is missing.", null);
-            return;
+        var boltzSettings = await boltzService.InitializeStore(StoreId, BoltzMode.Standalone);
+        try {
+            var boltzClient = boltzService.Daemon.GetClient(boltzSettings);
+            var wallet = await boltzClient.ImportWallet(
+                new Boltzrpc.WalletParams{
+                    Name = $"Samrock{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+                    Currency = Boltzrpc.Currency.Lbtc,
+                },
+                new Boltzrpc.WalletCredentials{
+                    CoreDescriptor = setupModelBtcLn.CtDescriptor,
+                }
+            );
+            boltzSettings.StandaloneWallet = new BoltzSettings.Wallet{
+                Id = wallet.Id,
+                Name = wallet.Name,
+            };
+            await boltzService.Set(StoreId, boltzSettings);
         }
-
-        try
+        catch (RpcException ex)
         {
-            var storeData = await storeRepository.FindStore(StoreId);
-            if (storeData == null)
-            {
-                result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Store not found.", null);
-                return;
-            }
-
-            // Construct the connection string
-            var addresses = string.Join(",", setupModelBtcLn.LiquidAddresses);
-            var connectionString = $"type=boltzexchanger;apiurl=https://api.boltz.exchange/;swap-addresses={addresses}";
-
-            var paymentMethodId = PaymentTypes.LN.GetPaymentMethodId("BTC");
-
-            var paymentMethod = new LightningPaymentMethodConfig { ConnectionString = connectionString };
-
-            // Update the settings in the store
-            storeData.SetPaymentMethodConfig(handlers[paymentMethodId], paymentMethod);
-            var blob = storeData.GetStoreBlob();
-            blob.SetExcluded(paymentMethodId, false); // enable lightning
-            storeData.SetStoreBlob(blob);
-
-            // Save the store
-            await storeRepository.UpdateStore(storeData);
-
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, null, null);
+            logger.LogError(ex, "Failed to import wallet.");
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, $"Failed to import wallet. {ex.Status.Detail}", ex);
         }
         catch (Exception ex)
         {
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "An error occurred while configuring Lightning settings.", ex);
+            logger.LogError(ex, "Failed to import wallet.");
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Failed to import wallet.", ex);
         }
     }
 
@@ -277,6 +261,7 @@ public class ProtocolController(
     {
         public bool UseLiquidBoltz { get; set; }
         public string[] LiquidAddresses { get; set; }
+        public string CtDescriptor { get; set; }
     }
 
     public enum AddressTypes
