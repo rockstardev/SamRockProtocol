@@ -1,9 +1,6 @@
 [submodule "btcpayserver"]
 	path = submodules/btcpayserver
 	url = https://github.com/btcpayserver/btcpayserver
-[submodule "submodules/strike-btcpayserver-plugin"]
-	path = submodules/strike-btcpayserver-plugin
-	url = https://github.com/rockstardev/strike-btcpayserver-plugin.git
 [submodule "submodules/boltz"]
 	path = submodules/boltz
 	url = https://github.com/BoltzExchange/boltz-btcpay-plugin
