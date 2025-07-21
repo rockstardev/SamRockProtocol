@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BTCPayServer;
@@ -84,23 +86,44 @@ public class ProtocolController(
 
     private async Task SetupLightning(BtcLnSetupModel setupModelBtcLn, SamrockProtocolSetupResponse result)
     {
-        var boltzSettings = await boltzService.InitializeStore(StoreId, BoltzMode.Standalone);
-        try {
+        try
+        {
+            var boltzSettings = await boltzService.InitializeStore(StoreId, BoltzMode.Standalone);
             var boltzClient = boltzService.Daemon.GetClient(boltzSettings);
-            var wallet = await boltzClient.ImportWallet(
-                new Boltzrpc.WalletParams{
-                    Name = $"Samrock{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
-                    Currency = Boltzrpc.Currency.Lbtc,
-                },
-                new Boltzrpc.WalletCredentials{
-                    CoreDescriptor = setupModelBtcLn.CtDescriptor,
-                }
-            );
-            boltzSettings.StandaloneWallet = new BoltzSettings.Wallet{
+
+            // by including a part of the descriptor hash, we can know if the wallet already exists
+            using var sha256 = SHA256.Create();
+            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(setupModelBtcLn.CtDescriptor));
+            var hashSubstring = Convert.ToHexString(hashBytes)[..8];
+            var name = $"Samrock-{hashSubstring}";
+
+            Boltzrpc.Wallet wallet;
+
+            try
+            {
+                wallet = await boltzClient.GetWallet(name);
+            }
+            catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
+            {
+                wallet = await boltzClient.ImportWallet(
+                    new Boltzrpc.WalletParams
+                    {
+                        Name = name,
+                        Currency = Boltzrpc.Currency.Lbtc,
+                    },
+                    new Boltzrpc.WalletCredentials
+                    {
+                        CoreDescriptor = setupModelBtcLn.CtDescriptor,
+                    }
+                );
+            }
+            boltzSettings.StandaloneWallet = new BoltzSettings.Wallet
+            {
                 Id = wallet.Id,
                 Name = wallet.Name,
             };
             await boltzService.Set(StoreId, boltzSettings);
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, null, null);
         }
         catch (RpcException ex)
         {
