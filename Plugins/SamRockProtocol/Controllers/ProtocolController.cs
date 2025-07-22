@@ -66,11 +66,18 @@ public class ProtocolController(
             await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.Fingerprint,
                 setupModel.BtcChain.DerivationPath, "BTC", storeData, SamrockProtocolKeys.BtcChain, result);
         if (setupModel.LiquidChain != null)
-            await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.Fingerprint,
-                setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
+        {
+            if (explorerProvider.GetNetwork("LBTC") != null)
+                await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.Fingerprint,
+                    setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
+            else
+                result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true,
+                    "Warning: LBTC is not available on server, ignoring sent data", null);
+        }
+
         if (setupModel.BtcLn != null)
             await SetupLightning(setupModel.BtcLn, result);
-        
+
         // TODO: If both LBTC is set and BtcLn is set, need to generate as many addresses for LiquidChain
         // as we have in setupModel.BtcLn.LiquidAddresses.Length to reserve them
 
