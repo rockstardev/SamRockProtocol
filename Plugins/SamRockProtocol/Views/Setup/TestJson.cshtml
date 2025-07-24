@@ -18,28 +18,19 @@
         <div class="form-group my-4">
         <textarea class="form-control" name="json" rows="21" cols="100">
 {
-  "BtcChain": {
-    "Xpub": "tpubDDPCDkBPaFE5PDhs5NJDb38RKzDuuRcMhcGgGHSdVFFPiX13R1BZCBm3xS48zJRkoqqZEEixpjViweQqSAfDRXHZV6gEeWoGDUnEqQZ42Gg",
-    "DerivationPath": "m/84'/0'/1'/0",
-    "Type": "P2WPKH",
-    "Fingerprint": "f8d61337",
-    "DerivationPath": "m/48'/0'/0'/2'"
-  },
-  "LiquidChain": {
-    "Xpub": "tpubD6NzVbkrYhZ4YS6KzQNC9CwKCxcpMFuFfg1uHRuYjFaKMN6gyNnWJ67A349DkZQnrSBLEU7mmrzXH6hrCvXzJzRU6HbK8YGS4D9qCo4AKJ2",
-    "BlindingKey": "e2eb4f6a06282febfb3c1fb3fe58fa73c833c564b8810e252a9fe9582454d4e4",
-    "Fingerprint": "f2d61337",
-    "DerivationPath": "m/49'/1776'/1'/0",
-    "Type": "P2SH_P2WPKH"
-  },
-  "BtcLn": {
-    "UseLiquidBoltz": "true",
-    "LiquidAddresses": [
-      "VJL7GrTXepmvpnCXvHXRuvjvQd5gSHiyzV9PSLkY4DFyxFG3YP6bWfQpeJC2Un7Q81wwvw7rEXaLJTZd",
-      "VJLDJvnypuKPskjHThyT6Jq5SLy9RcDiV1ipKEj6tjSzbYq5SzsG3aZhT59ZiUX2iGeYBDPa9M8MCHTb",
-      "VJLKA3JzHLapUchzBMh6qiieHDE1gvHzrMvKd4nMK9XmyHRWPdL9syMDM8P5K4KLGNk1TctaqefoVyZp"
-    ]
-  }
+    "version": "0.0.1",
+    "BTC": {
+        "Descriptor": "wpkh([8f681564/84'/0'/0']xpub6BemYiVNp19ZzaJLeF7AV8HUs3Rg2Wh5SYv9iYdUmfixhdnjinwEKPUS6TGD2T7dQo7C2J4SihUU8Bcn8VCF4Hdtrh1RR4mNpV49AcKWD14/0/*)#8m68c9t7"
+    },
+    "LBTC": {
+        "Descriptor": "ct(slip77(e3fd1a36ab40cbd25c945d12f75f47a449fc33b43d8eff735f92a25c21f83c71),elsh(wpkh([8f681564/49'/1776'/0']xpub6BemYiVNp19a2F4Vn6Utm2rVdCgekBSndb5xehcK9AJZJaRKvZkyioLw7WgErP6STYeQq5eGNoedYUHHn1XBb8wuM62UcBbBRXFJtuX95pT/0/*)))#0dsvq5mw"
+    },
+    "BTC-LN": {
+        "Type": "boltz",
+        "LBTC": {
+            "Descriptor": "ct(slip77(e3fd1a36ab40cbd25c945d12f75f47a449fc33b43d8eff735f92a25c21f83c71),elsh(wpkh([8f681564/49'/1776'/0']xpub6BemYiVNp19a2F4Vn6Utm2rVdCgekBSndb5xehcK9AJZJaRKvZkyioLw7WgErP6STYeQq5eGNoedYUHHn1XBb8wuM62UcBbBRXFJtuX95pT/0/*)))#0dsvq5mw"
+        }
+    }
 }
     </textarea>
         </div>

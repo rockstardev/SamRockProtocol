@@ -115,19 +115,15 @@ public class ProtocolController(
                 wallet = await boltzClient.ImportWallet(
                     new Boltzrpc.WalletParams
                     {
-                        Name = name,
-                        Currency = Boltzrpc.Currency.Lbtc,
+                        Name = name, Currency = Boltzrpc.Currency.Lbtc,
                     },
-                    new Boltzrpc.WalletCredentials
-                    {
-                        CoreDescriptor = setupModelBtcLn.CtDescriptor,
-                    }
+                    new Boltzrpc.WalletCredentials { CoreDescriptor = setupModelBtcLn.CtDescriptor, }
                 );
             }
+
             boltzSettings.StandaloneWallet = new BoltzSettings.Wallet
             {
-                Id = wallet.Id,
-                Name = wallet.Name,
+                Id = wallet.Id, Name = wallet.Name,
             };
             await boltzService.Set(StoreId, boltzSettings);
             result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, null, null);
