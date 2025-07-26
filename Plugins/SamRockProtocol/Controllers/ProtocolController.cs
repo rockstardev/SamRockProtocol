@@ -52,14 +52,14 @@ public class ProtocolController(
     {
         var otp = Request.Query["otp"].ToString();
         if (string.IsNullOrEmpty(otp) || !samrockProtocolService.TryGet(otp, out var importWalletModel))
-            return NotFound(new SamrockProtocolResponse(false, "OTP not found or expired.", null));
+            return NotFound(new SamRockProtocolResponse(false, "OTP not found or expired.", null));
 
         var storeData = await storeRepository.FindStore(importWalletModel.StoreId);
-        if (storeData == null) return NotFound(new SamrockProtocolResponse(false, "Store not found.", null));
+        if (storeData == null) return NotFound(new SamRockProtocolResponse(false, "Store not found.", null));
 
         var jsonField = Request.Form["json"];
         var setupModel = TryDeserializeJson(jsonField, out var ex);
-        if (setupModel == null) return BadRequest(new SamrockProtocolResponse(false, "Invalid JSON format.", ex));
+        if (setupModel == null) return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
 
         var result = new SamrockProtocolSetupResponse();
 
@@ -72,7 +72,7 @@ public class ProtocolController(
                 await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.Fingerprint,
                     setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
             else
-                result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true,
+                result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(true,
                     "Warning: LBTC is not available on server, ignoring sent data", null);
         }
 
@@ -127,17 +127,17 @@ public class ProtocolController(
                 Id = wallet.Id, Name = wallet.Name,
             };
             await boltzService.Set(StoreId, boltzSettings);
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(true, null, null);
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(true, null, null);
         }
         catch (RpcException ex)
         {
             logger.LogError(ex, "Failed to import wallet.");
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, $"Failed to import wallet. {ex.Status.Detail}", ex);
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(false, $"Failed to import wallet. {ex.Status.Detail}", ex);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to import wallet.");
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamrockProtocolResponse(false, "Failed to import wallet.", ex);
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(false, "Failed to import wallet.", ex);
         }
     }
 
@@ -147,14 +147,14 @@ public class ProtocolController(
         if (string.IsNullOrEmpty(derivationScheme) || explorerProvider.GetNetwork(networkCode) == null)
         {
             result.Results[key] =
-                new SamrockProtocolResponse(false, $"{networkCode} is not supported on this server.", null);
+                new SamRockProtocolResponse(false, $"{networkCode} is not supported on this server.", null);
             return;
         }
 
         if (string.IsNullOrEmpty(fingerprint) || !HDFingerprint.TryParse(fingerprint, out var hdFingerprint))
         {
             result.Results[key] =
-                new SamrockProtocolResponse(false, $"Invalid fingerprint for wallet supplied", null);
+                new SamRockProtocolResponse(false, $"Invalid fingerprint for wallet supplied", null);
             return;
         }
 
@@ -170,11 +170,11 @@ public class ProtocolController(
 
             await ConfigureStorePaymentMethod(storeData, strategy, network);
 
-            result.Results[key] = new SamrockProtocolResponse(true, null, null);
+            result.Results[key] = new SamRockProtocolResponse(true, null, null);
         }
         catch (Exception ex)
         {
-            result.Results[key] = new SamrockProtocolResponse(false, null, ex);
+            result.Results[key] = new SamRockProtocolResponse(false, null, ex);
         }
     }
 

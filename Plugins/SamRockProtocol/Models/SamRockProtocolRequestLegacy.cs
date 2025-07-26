@@ -71,21 +71,7 @@ public enum AddressTypes
 
 public class SamrockProtocolSetupResponse
 {
-    public Dictionary<SamrockProtocolKeys, SamrockProtocolResponse> Results { get; init; } = new();
-}
-
-public class SamrockProtocolResponse
-{
-    public SamrockProtocolResponse(bool success, string message, Exception exception)
-    {
-        Success = success;
-        Message = message;
-        Exception = exception;
-    }
-
-    public bool Success { get; set; }
-    public string Message { get; set; }
-    public Exception Exception { get; set; }
+    public Dictionary<SamrockProtocolKeys, SamRockProtocolResponse> Results { get; init; } = new();
 }
 
 public enum SamrockProtocolKeys
