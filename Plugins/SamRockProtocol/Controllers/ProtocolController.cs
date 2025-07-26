@@ -58,26 +58,29 @@ public class ProtocolController(
         if (storeData == null) return NotFound(new SamRockProtocolResponse(false, "Store not found.", null));
 
         var jsonField = Request.Form["json"];
-        var setupModel = TryDeserializeJson(jsonField, out var ex);
-        if (setupModel == null) return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
+        var setupModel = SamRockProtocolRequest.Parse(jsonField, out var ex);
+        if (setupModel == null)
+            return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
 
         var result = new SamrockProtocolSetupResponse();
 
-        if (setupModel.BtcChain != null)
-            await SetupWalletAsync(setupModel.BtcChain.ToString(), setupModel.BtcChain.Fingerprint,
-                setupModel.BtcChain.DerivationPath, "BTC", storeData, SamrockProtocolKeys.BtcChain, result);
-        if (setupModel.LiquidChain != null)
+        if (setupModel.BTC != null && !string.IsNullOrEmpty(setupModel.BTC.Descriptor))
+            await SetupWalletAsync(setupModel.BTC.Descriptor, null, null, "BTC", storeData, SamrockProtocolKeys.BtcChain, result);
+            
+        if (setupModel.LBTC != null && !string.IsNullOrEmpty(setupModel.LBTC.Descriptor))
         {
             if (explorerProvider.GetNetwork("LBTC") != null)
-                await SetupWalletAsync(setupModel.LiquidChain.ToString(), setupModel.LiquidChain.Fingerprint,
-                    setupModel.LiquidChain.DerivationPath, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
+                await SetupWalletAsync(setupModel.LBTC.Descriptor, null, null, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
             else
-                result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(true,
+                result.Results[SamrockProtocolKeys.LiquidChain] = new SamRockProtocolResponse(true,
                     "Warning: LBTC is not available on server, ignoring sent data", null);
         }
 
-        if (setupModel.BtcLn != null)
-            await SetupLightning(setupModel.BtcLn, result);
+        if (setupModel.BTCLN != null)
+        {
+            result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(true,
+                $"Lightning setup configured with type: {setupModel.BTCLN.Type}", null);
+        }
 
         // TODO: If both LBTC is set and BtcLn is set, need to generate as many addresses for LiquidChain
         // as we have in setupModel.BtcLn.LiquidAddresses.Length to reserve them
@@ -191,21 +194,6 @@ public class ProtocolController(
 
         await storeRepository.UpdateStore(storeData);
         eventAggregator.Publish(new WalletChangedEvent { WalletId = new WalletId(storeData.Id, network.CryptoCode) });
-    }
-
-    private static SamRockProtocolRequestLegacy TryDeserializeJson(string json, out Exception parsingException)
-    {
-        try
-        {
-            var model = JsonConvert.DeserializeObject<SamRockProtocolRequestLegacy>(json);
-            parsingException = null;
-            return model;
-        }
-        catch (Exception ex)
-        {
-            parsingException = ex;
-            return null;
-        }
     }
 
     private DerivationSchemeSettings ParseDerivationStrategy(string derivationScheme, BTCPayNetwork network)
