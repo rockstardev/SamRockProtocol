@@ -3,9 +3,9 @@ using BTCPayServer;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Plugins;
-using BTCPayServer.Plugins.Boltz;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.Extensions.DependencyInjection;
+using SamRockProtocol.Models;
 using SamRockProtocol.Services;
 
 namespace SamRockProtocol;
@@ -34,6 +34,7 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
 
         services.AddSingleton<SamrockProtocolHostedService>();
         services.AddScheduledTask<SamrockProtocolHostedService>(TimeSpan.FromMinutes(1));
+        services.AddSingleton<BoltzWrapper>();
 
         services.AddRateLimits(); // configured in SamrockProtocolHostedService
     }
