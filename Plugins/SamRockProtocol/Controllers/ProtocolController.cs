@@ -55,21 +55,131 @@ public class ProtocolController(
         var result = new SamrockProtocolSetupResponse();
 
         if (setupModel.BTC != null && !string.IsNullOrEmpty(setupModel.BTC.Descriptor))
-            await SetupWalletAsync(setupModel.BTC.Descriptor, null, null, "BTC", storeData, SamrockProtocolKeys.BtcChain, result);
+        {
+            var key = SamrockProtocolKeys.BTC;
+            try
+            {
+                // Parse output descriptor format and convert to NBXplorer format
+                // Input: wpkh([8f681564/84'/0'/0']xpub6BemYiVNp19ZzaJLeF7AV8HUs3Rg2Wh5SYv9iYdUmfixhdnjinwEKPUS6TGD2T7dQo7C2J4SihUU8Bcn8VCF4Hdtrh1RR4mNpV49AcKWD14/0/*)#8m68c9t7
+                var descriptor = setupModel.BTC.Descriptor;
+
+                // Extract script type, fingerprint, derivation path, xpub, and address derivation suffix
+                var match = Regex.Match(descriptor, @"^(\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)(?:#[a-zA-Z0-9]+)?");
+                if (!match.Success)
+                {
+                    result.Results[key] = new SamRockProtocolResponse(false,
+                        "Invalid descriptor format - could not parse script type, fingerprint, derivation path, and xpub.", null);
+                    return Ok(new
+                    {
+                        Success = false,
+                        Message = "Invalid descriptor format.",
+                        Result = result
+                    });
+                }
+
+                var scriptType = match.Groups[1].Value;
+                var fingerprint = match.Groups[2].Value;
+                var basePath = match.Groups[3].Value;
+                var xpub = match.Groups[4].Value;
+                var addressSuffix = match.Groups[5].Value; // e.g., "/0/*"
+
+                // Combine base derivation path with address derivation suffix
+                var derivationPath = basePath; // + (addressSuffix ?? "");
+
+                // Convert script type to NBXplorer suffix format
+                var suffix = GetNBXplorerSuffix(scriptType, descriptor);
+                if (suffix == null)
+                {
+                    result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported script type: {scriptType}", null);
+                    return Ok(new
+                    {
+                        Success = false,
+                        Message = $"Unsupported script type: {scriptType}",
+                        Result = result
+                    });
+                }
+
+                // Create NBXplorer format derivation scheme
+                var derivationScheme = xpub + suffix;
+
+                await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "BTC", storeData, key, result);
+            }
+            catch (Exception btcex)
+            {
+                result.Results[key] = new SamRockProtocolResponse(false, null, btcex);
+            }
+        }
 
         if (setupModel.LBTC != null && !string.IsNullOrEmpty(setupModel.LBTC.Descriptor))
         {
+            var key = SamrockProtocolKeys.LBTC;
+
             if (explorerProvider.GetNetwork("LBTC") != null)
-                await SetupWalletAsync(setupModel.LBTC.Descriptor, null, null, "LBTC", storeData, SamrockProtocolKeys.LiquidChain, result);
+            {
+                try
+                {
+                    // Parse LBTC output descriptor format and convert to NBXplorer format
+                    // Input: ct(slip77(blinding_key),elsh(wpkh([fingerprint/path]xpub...)))
+                    var descriptor = setupModel.LBTC.Descriptor;
+
+                    // Extract slip77 blinding key, script type, fingerprint, derivation path, xpub, and address derivation suffix
+                    var match = Regex.Match(descriptor,
+                        @"^ct\(slip77\(([a-fA-F0-9]{64})\),elsh\((\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)\)\)(?:#[a-zA-Z0-9]+)?");
+                    if (!match.Success)
+                    {
+                        result.Results[key] = new SamRockProtocolResponse(false,
+                            "Invalid LBTC descriptor format - could not parse slip77, script type, fingerprint, derivation path, and xpub.", null);
+                    }
+                    else
+                    {
+                        var blindingKey = match.Groups[1].Value;
+                        var scriptType = match.Groups[2].Value;
+                        var fingerprint = match.Groups[3].Value;
+                        var basePath = match.Groups[4].Value;
+                        var xpub = match.Groups[5].Value;
+                        var addressSuffix = match.Groups[6].Value; // e.g., "/0/*"
+
+                        // Combine base derivation path with address derivation suffix
+                        var derivationPath = basePath; // + (addressSuffix ?? "");
+
+                        // Convert script type to NBXplorer suffix format
+                        var suffix = GetNBXplorerSuffix(scriptType, descriptor);
+                        if (suffix == null)
+                        {
+                            result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported LBTC script type: {scriptType}", null);
+                        }
+                        else
+                        {
+                            // Create NBXplorer format derivation scheme for LBTC: xpub + suffix + slip77
+                            var derivationScheme = $"{xpub}{suffix}-[slip77={blindingKey}]";
+
+                            await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "LBTC", storeData, key, result);
+                        }
+                    }
+                }
+                catch (Exception lbtcex)
+                {
+                    result.Results[key] = new SamRockProtocolResponse(false, null, lbtcex);
+                }
+            }
             else
-                result.Results[SamrockProtocolKeys.LiquidChain] = new SamRockProtocolResponse(true,
+            {
+                result.Results[key] = new SamRockProtocolResponse(true,
                     "Warning: LBTC is not available on server, ignoring sent data", null);
+            }
         }
 
         if (setupModel.BTCLN != null)
         {
-            result.Results[SamrockProtocolKeys.BtcLn] = new SamRockProtocolResponse(true,
-                $"Lightning setup configured with type: {setupModel.BTCLN.Type}", null);
+            if (string.Equals(setupModel.BTCLN.Type, "Boltz", StringComparison.OrdinalIgnoreCase))
+            {
+                await boltzWrapper.SetBoltz(StoreId, setupModel.BTCLN.LBTC.Descriptor, result);
+            }
+            else
+            {
+                result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false,
+                    $"Lightning setup configured with unknown type: {setupModel.BTCLN.Type}", null);
+            }
         }
 
         // TODO: If both LBTC is set and BtcLn is set, need to generate as many addresses for LiquidChain
@@ -83,11 +193,6 @@ public class ProtocolController(
             Message = "Wallet setup successfully.",
             Result = result
         });
-    }
-
-    private Task SetupLightning(BtcLnSetupModel setupModelBtcLn, SamrockProtocolSetupResponse result)
-    {
-        return boltzWrapper.SetBoltz(StoreId, setupModelBtcLn.CtDescriptor, result);
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string fingerprint, string derivationPath, string networkCode,
@@ -164,5 +269,26 @@ public class ProtocolController(
 
         var strategy = parser.Parse(derivationScheme);
         return new DerivationSchemeSettings(strategy, network);
+    }
+
+    private string GetNBXplorerSuffix(string scriptType, string descriptor = null)
+    {
+        switch (scriptType.ToLower())
+        {
+            case "wpkh":
+                return ""; // P2WPKH - no suffix
+            case "pkh":
+                return "-[legacy]"; // P2PKH
+            case "sh":
+                // For BTC, check if it's sh(wpkh(...)) for P2SH-P2WPKH
+                if (descriptor != null && descriptor.Contains("sh(wpkh("))
+                    return "-[p2sh]";
+                else
+                    return "-[p2sh]"; // Generic P2SH
+            case "tr":
+                return "-[taproot]"; // P2TR
+            default:
+                return null; // Indicates unsupported script type
+        }
     }
 }

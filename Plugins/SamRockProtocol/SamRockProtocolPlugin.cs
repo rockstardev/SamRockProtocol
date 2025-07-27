@@ -15,7 +15,7 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
         new() { Identifier = nameof(BTCPayServer), Condition = ">=2.1.6" },
-        new() { Identifier = "BTCPayServer.Plugins.Boltz", Condition = ">=2.1.12" }
+        //new() { Identifier = "BTCPayServer.Plugins.Boltz", Condition = ">=2.1.12" }
     ];
 
     public static bool IsDevMode =>

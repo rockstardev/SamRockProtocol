@@ -76,7 +76,7 @@ public class SamrockProtocolSetupResponse
 
 public enum SamrockProtocolKeys
 {
-    BtcChain,
-    BtcLn,
-    LiquidChain
+    BTC,
+    BTC_LN,
+    LBTC
 }
