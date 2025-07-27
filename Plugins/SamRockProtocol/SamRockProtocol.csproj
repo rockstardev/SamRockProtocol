@@ -11,7 +11,7 @@
         <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** SamRock protocol provides ability to import wallet derivation keys in BTCPay.
             Try it out with Aqua Wallet!
         </Description>
-        <Version>0.0.20</Version>
+        <Version>0.0.21</Version>
     </PropertyGroup>
 
     <!-- Plugin development properties -->
@@ -24,7 +24,7 @@
     <!-- Conditional compilation for Boltz support -->
     <PropertyGroup>
         <!-- Set to true to enable Boltz support (requires non-Windows or compatible environment) -->
-        <EnableBoltzSupport Condition="'$(EnableBoltzSupport)' == ''">false</EnableBoltzSupport>
+        <EnableBoltzSupport Condition="'$(EnableBoltzSupport)' == ''">true</EnableBoltzSupport>
         <DefineConstants Condition="'$(EnableBoltzSupport)' == 'true'">$(DefineConstants);BOLTZ_SUPPORT</DefineConstants>
     </PropertyGroup>
 
