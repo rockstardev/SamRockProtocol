@@ -20,6 +20,13 @@
         <PreserveCompilationContext>false</PreserveCompilationContext>
         <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
     </PropertyGroup>
+    
+    <!-- Conditional compilation for Boltz support -->
+    <PropertyGroup>
+        <!-- Set to true to enable Boltz support (requires non-Windows or compatible environment) -->
+        <EnableBoltzSupport Condition="'$(EnableBoltzSupport)' == ''">false</EnableBoltzSupport>
+        <DefineConstants Condition="'$(EnableBoltzSupport)' == 'true'">$(DefineConstants);BOLTZ_SUPPORT</DefineConstants>
+    </PropertyGroup>
 
     <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
     <ItemDefinitionGroup>
@@ -33,6 +40,10 @@
     <ItemGroup>
         <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
         <EmbeddedResource Include="Resources\**" />
-<!--        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj" />-->
+    </ItemGroup>
+    
+    <!-- Conditional Boltz reference -->
+    <ItemGroup Condition="'$(EnableBoltzSupport)' == 'true'">
+        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj" />
     </ItemGroup>
 </Project>

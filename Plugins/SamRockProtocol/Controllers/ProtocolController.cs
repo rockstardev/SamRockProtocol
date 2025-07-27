@@ -60,7 +60,7 @@ public class ProtocolController(
             try
             {
                 // Parse output descriptor format and convert to NBXplorer format
-                // Input: wpkh([8f681564/84'/0'/0']xpub6BemYiVNp19ZzaJLeF7AV8HUs3Rg2Wh5SYv9iYdUmfixhdnjinwEKPUS6TGD2T7dQo7C2J4SihUU8Bcn8VCF4Hdtrh1RR4mNpV49AcKWD14/0/*)#8m68c9t7
+                // Input: wpkh([8f681564/84'/0'/0']xpub...xxx/0/*)#8m68c9t7
                 var descriptor = setupModel.BTC.Descriptor;
 
                 // Extract script type, fingerprint, derivation path, xpub, and address derivation suffix
@@ -83,7 +83,7 @@ public class ProtocolController(
                 var xpub = match.Groups[4].Value;
                 var addressSuffix = match.Groups[5].Value; // e.g., "/0/*"
 
-                // Combine base derivation path with address derivation suffix
+                // TODO: Check whether you need to combine base derivation path with address derivation suffix
                 var derivationPath = basePath; // + (addressSuffix ?? "");
 
                 // Convert script type to NBXplorer suffix format
@@ -139,7 +139,7 @@ public class ProtocolController(
                         var xpub = match.Groups[5].Value;
                         var addressSuffix = match.Groups[6].Value; // e.g., "/0/*"
 
-                        // Combine base derivation path with address derivation suffix
+                        // TODO: Check whether you need to combine base derivation path with address derivation suffix
                         var derivationPath = basePath; // + (addressSuffix ?? "");
 
                         // Convert script type to NBXplorer suffix format
