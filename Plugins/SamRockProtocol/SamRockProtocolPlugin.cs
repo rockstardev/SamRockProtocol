@@ -20,17 +20,8 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
 #endif
     ];
 
-    public static bool IsDevMode =>
-        // #if DEBUG
-        //             return true;
-        // #else
-        //             return false;
-        // #endif
-        true;
-
     public override void Execute(IServiceCollection services)
     {
-        //services.AddUIExtension("store-wallets-nav", "AquaSidebarNav");
         services.AddUIExtension("dashboard-setup-guide-payment", "SamRockProtocolSetupPayments");
         services.AddUIExtension("store-integrations-nav", "SamRockProtocolNav");
 

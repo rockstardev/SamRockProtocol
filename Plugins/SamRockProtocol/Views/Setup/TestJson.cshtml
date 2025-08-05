@@ -3,20 +3,18 @@
 @using SamRockProtocol.Views
 @model SamRockProtocol.Controllers.ImportWalletsViewModel
 @{
-    ViewData.SetActivePage("SamRockProtocol", "SamRock Protocol - Test Json","SamRockProtocol");
+    ViewData.SetActivePage("SamRockProtocol", "SamRock Protocol - Test Json", "SamRockProtocol");
 }
 <h1>@ViewData["Title"]</h1>
 
-@if (SamRockProtocolPlugin.IsDevMode)
-{
-    <p>
-    <form id="testSetupForm" method="post">
-        <div class="form-group my-4">
-            <label for="formActionUrl">Form Action URL:</label>
-            <input type="text" id="formActionUrl" class="form-control" placeholder="Enter form action URL" />
-        </div>
-        <div class="form-group my-4">
-        <textarea class="form-control" name="json" rows="21" cols="100">
+<p>
+<form id="testSetupForm" method="post">
+    <div class="form-group my-4">
+        <label for="formActionUrl">Form Action URL:</label>
+        <input type="text" id="formActionUrl" class="form-control" placeholder="Enter form action URL" />
+    </div>
+    <div class="form-group my-4">
+            <textarea class="form-control" name="json" rows="21" cols="100">
 {
     "version": "0.0.1",
     "BTC": {
@@ -33,16 +31,15 @@
     }
 }
     </textarea>
-        </div>
-        <button type="submit" class="btn btn-primary" text-translate="true">Test Setup</button>
-    </form>
-    <script>
-        document.getElementById("testSetupForm").addEventListener("submit", function (event) {
-            var formActionUrl = document.getElementById("formActionUrl").value;
-            if (formActionUrl) {
-                this.action = formActionUrl;
-            }
-        });
-    </script>
-    </p>
-}
+    </div>
+    <button type="submit" class="btn btn-primary" text-translate="true">Test Setup</button>
+</form>
+<script>
+    document.getElementById("testSetupForm").addEventListener("submit", function (event) {
+        var formActionUrl = document.getElementById("formActionUrl").value;
+        if (formActionUrl) {
+            this.action = formActionUrl;
+        }
+    });
+</script>
+</p>
