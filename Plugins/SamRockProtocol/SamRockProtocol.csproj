@@ -8,8 +8,8 @@
     <!-- Plugin specific properties -->
     <PropertyGroup>
         <Product>SamRock Protocol</Product>
-        <Description>*** DO NOT INSTALL, UNLESS YOU KNOW WHAT YOU'RE DOING*** SamRock protocol provides ability to import wallet derivation keys in BTCPay.
-            Try it out with Aqua Wallet!
+        <Description>Get paid online, receive funds on your phone.
+            SamRock Protocol links your store to self-custodial wallet via a simple QR scan. Try it with Aqua Wallet!
         </Description>
         <Version>0.0.21</Version>
     </PropertyGroup>
