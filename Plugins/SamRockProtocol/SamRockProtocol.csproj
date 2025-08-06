@@ -11,7 +11,7 @@
         <Description>Get paid online, receive funds on your phone.
             SamRock Protocol links your store to self-custodial wallet via a simple QR scan. Try it with Aqua Wallet!
         </Description>
-        <Version>0.0.21</Version>
+        <Version>0.0.22</Version>
     </PropertyGroup>
 
     <!-- Plugin development properties -->
@@ -20,7 +20,7 @@
         <PreserveCompilationContext>false</PreserveCompilationContext>
         <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
     </PropertyGroup>
-    
+
     <!-- Conditional compilation for Boltz support -->
     <PropertyGroup>
         <!-- Set to true to enable Boltz support (requires non-Windows or compatible environment) -->
@@ -38,12 +38,12 @@
     </ItemDefinitionGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
-        <EmbeddedResource Include="Resources\**" />
+        <ProjectReference Include="..\..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj"/>
+        <EmbeddedResource Include="Resources\**"/>
     </ItemGroup>
-    
+
     <!-- Conditional Boltz reference -->
     <ItemGroup Condition="'$(EnableBoltzSupport)' == 'true'">
-        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj" />
+        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj"/>
     </ItemGroup>
 </Project>
