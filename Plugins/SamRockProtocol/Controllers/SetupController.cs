@@ -93,7 +93,11 @@ public class SetupController : Controller
     public IActionResult ImportWalletsStatus()
     {
         var otp = Request.Query["otp"].ToString();
-        return Ok(new { status = _samrockProtocolService.OtpStatus(otp)?.ToString().ToLowerInvariant() });
+        string res = null;
+        var otpStatus = _samrockProtocolService.OtpStatus(otp);
+        if (otpStatus != null)
+            res = _samrockProtocolService.OtpStatus(otp).ImportSuccessful.ToString().ToLowerInvariant();
+        return Ok(new { status = res });
     }
 
     [HttpGet("ImportResult")]
