@@ -143,8 +143,9 @@ public class ProtocolController(
                         var derivationPath = basePath; // + (addressSuffix ?? "");
 
                         // Convert script type to NBXplorer suffix format
-                        var suffix = GetNBXplorerSuffix(scriptType, descriptor);
-                        if (suffix == null)
+                        //var suffix = GetNBXplorerSuffix(scriptType, descriptor);
+                        var suffix = "-[p2sh]"; // For LBTC at the moment of launch, we assume P2SH_P2WPKH
+                        if (suffix == null)  
                         {
                             result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported LBTC script type: {scriptType}", null);
                         }
