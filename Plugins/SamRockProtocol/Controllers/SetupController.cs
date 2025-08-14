@@ -100,11 +100,14 @@ public class SetupController : Controller
     public IActionResult ImportResult(string otp)
     {
         var otpStatus = _samrockProtocolService.OtpStatus(otp);
-        var model = new ImportResultViewModel { OtpStatus = otpStatus };
+        ImportResultViewModel model = new ImportResultViewModel { OtpStatus = null };
+        if (otpStatus != null)
+        {
+            model = new ImportResultViewModel { OtpStatus = otpStatus.ImportSuccessful, ErrorMessage = otpStatus.ErrorMessage };
+        }
 
         return View(model);
     }
-
 
 
     private string GenerateSetupUrl(ImportWalletsViewModel model, string otp)
@@ -140,4 +143,5 @@ public class ImportWalletsViewModel
 public class ImportResultViewModel
 {
     public bool? OtpStatus { get; set; }
+    public string ErrorMessage { get; set; }
 }

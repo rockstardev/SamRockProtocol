@@ -12,6 +12,10 @@
         break;
     case false:
         <h1 style="color: red;">Wallet import failed. Please check logs.</h1>
+        if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+            <p class="text-danger">Error: @Model.ErrorMessage</p>
+        }
         break;
     default:
         <h1 style="color: orange;">Invalid OTP. Please try again.</h1>

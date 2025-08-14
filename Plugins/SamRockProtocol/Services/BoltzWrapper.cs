@@ -60,7 +60,8 @@ public class BoltzWrapper(
                 catch (RpcException ex2) when (ex2.StatusCode == StatusCode.InvalidArgument && ex2.Status.Detail.Contains("has the same credentials"))
                 {
                     logger.LogWarning("Collision with existing wallet, likely in another store. Error: " + ex2.Status.Detail);
-                    result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, $"Failed to import wallet. {ex.Status.Detail}", ex);
+                    result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, 
+                        $"Collision with existing wallet, likely in another store. Error: " + ex2.Status.Detail, ex2);
                     
                     // If we can't import due to a collision, we don't want to proceed
                     return;

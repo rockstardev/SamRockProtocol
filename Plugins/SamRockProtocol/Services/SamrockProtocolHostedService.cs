@@ -74,22 +74,24 @@ public class SamrockProtocolHostedService(
         return false;
     }
 
-    public void OtpUsed(string otp, bool importSuccessful)
+    public void OtpUsed(string otp, bool importSuccessful, string errorMessage = null)
     {
         if (_samrockImportDictionary.Remove(otp, out var value))
-            _samrockResults.Add(otp, new SamrockResult { ImportSuccessful = importSuccessful, Expires = value.Expires });
+            _samrockResults.Add(otp, new SamrockResult { ImportSuccessful = importSuccessful, ErrorMessage = errorMessage, Expires = value.Expires });
     }
 
-    public bool? OtpStatus(string otp)
+    public SamrockResult OtpStatus(string otp)
     {
-        if (_samrockResults.TryGetValue(otp, out var value)) return value.ImportSuccessful;
+        if (_samrockResults.TryGetValue(otp, out var value)) 
+            return value;
 
         return null;
     }
 
-    private class SamrockResult
+    public class SamrockResult
     {
         public bool ImportSuccessful { get; set; }
+        public string ErrorMessage { get; set; }
         public DateTimeOffset Expires { get; set; }
     }
 

@@ -187,7 +187,14 @@ public class ProtocolController(
         // as we have in setupModel.BtcLn.LiquidAddresses.Length to reserve them
 
         var allSuccess = result.Results.Values.All(a => a.Success);
-        samrockProtocolService.OtpUsed(otp, allSuccess);
+        string errorMessage = null;
+        if (!allSuccess && result.Results[SamrockProtocolKeys.BTC_LN] != null)
+        {
+            var res = result.Results[SamrockProtocolKeys.BTC_LN];
+            errorMessage = res.Message;
+        }
+        
+        samrockProtocolService.OtpUsed(otp, allSuccess, errorMessage);
         return Ok(new
         {
             Success = true,
