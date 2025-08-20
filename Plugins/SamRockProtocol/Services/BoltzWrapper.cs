@@ -24,6 +24,7 @@ public class BoltzWrapper(
     public async Task SetBoltz(string storeId, string ctDescriptor, SamrockProtocolSetupResponse result)
     {
 #if BOLTZ_SUPPORT
+        logger.LogInformation("BoltzWrapper.SetBoltz setting up Boltz. StoreId={storeId}, CtDescriptor={ctDescriptor}", storeId, ctDescriptor);
         try
         {
             var boltzSettings = await boltzService.InitializeStore(storeId, BoltzMode.Standalone);

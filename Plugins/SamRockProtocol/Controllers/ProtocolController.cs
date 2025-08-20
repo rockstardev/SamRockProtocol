@@ -17,6 +17,8 @@ using NBitcoin;
 using NicolasDorier.RateLimits;
 using SamRockProtocol.Services;
 using SamRockProtocol.Models;
+using Microsoft.Extensions.Logging;
+using BTCPayServer.Common;
 
 namespace SamRockProtocol.Controllers;
 
@@ -29,6 +31,7 @@ public class ProtocolController(
     BTCPayWalletProvider walletProvider,
     StoreRepository storeRepository,
     EventAggregator eventAggregator,
+    ILogger<ProtocolController> logger,
     BoltzWrapper boltzWrapper)
     : Controller
 {
@@ -45,15 +48,21 @@ public class ProtocolController(
             return NotFound(new SamRockProtocolResponse(false, "OTP not found or expired.", null));
 
         var storeData = await storeRepository.FindStore(importWalletModel.StoreId);
-        if (storeData == null) return NotFound(new SamRockProtocolResponse(false, "Store not found.", null));
+        if (storeData == null)
+            return NotFound(new SamRockProtocolResponse(false, "Store not found.", null));
 
         var jsonField = Request.Form["json"];
-        var setupModel = SamRockProtocolRequest.Parse(jsonField, out var ex);
+        var setupModel = UtilJson.Parse<SamRockProtocolRequest>(jsonField, out var ex);
         if (setupModel == null)
             return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
+        
+        logger.LogInformation("SamRockProtocol request initiated. setupModel={SetupModel}", setupModel.ToJson());
+        return await processSamRockProtocolRequest(setupModel, storeData, otp);
+    }
 
+    private async Task<IActionResult> processSamRockProtocolRequest(SamRockProtocolRequest setupModel, StoreData storeData, string otp)
+    {
         var result = new SamrockProtocolSetupResponse();
-
         if (setupModel.BTC != null && !string.IsNullOrEmpty(setupModel.BTC.Descriptor))
         {
             var key = SamrockProtocolKeys.BTC;
@@ -68,41 +77,32 @@ public class ProtocolController(
                 if (!match.Success)
                 {
                     result.Results[key] = new SamRockProtocolResponse(false,
-                        "Invalid descriptor format - could not parse script type, fingerprint, derivation path, and xpub.", null);
-                    return Ok(new
-                    {
-                        Success = false,
-                        Message = "Invalid descriptor format.",
-                        Result = result
-                    });
+                        "Invalid BTC descriptor format - could not parse script type, fingerprint, derivation path, and xpub.", null);
                 }
-
-                var scriptType = match.Groups[1].Value;
-                var fingerprint = match.Groups[2].Value;
-                var basePath = match.Groups[3].Value;
-                var xpub = match.Groups[4].Value;
-                var addressSuffix = match.Groups[5].Value; // e.g., "/0/*"
-
-                // TODO: Check whether you need to combine base derivation path with address derivation suffix
-                var derivationPath = basePath; // + (addressSuffix ?? "");
-
-                // Convert script type to NBXplorer suffix format
-                var suffix = GetNBXplorerSuffix(scriptType, descriptor);
-                if (suffix == null)
+                else
                 {
-                    result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported script type: {scriptType}", null);
-                    return Ok(new
+                    var scriptType = match.Groups[1].Value;
+                    var fingerprint = match.Groups[2].Value;
+                    var basePath = match.Groups[3].Value;
+                    var xpub = match.Groups[4].Value;
+                    var addressSuffix = match.Groups[5].Value; // e.g., "/0/*"
+
+                    // TODO: Check whether you need to combine base derivation path with address derivation suffix
+                    var derivationPath = basePath; // + (addressSuffix ?? "");
+
+                    // Convert script type to NBXplorer suffix format
+                    var suffix = GetNBXplorerSuffix(scriptType, descriptor);
+                    if (suffix == null)
                     {
-                        Success = false,
-                        Message = $"Unsupported script type: {scriptType}",
-                        Result = result
-                    });
+                        result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported BTC script type: {scriptType}", null);
+                    }
+                    else
+                    {
+                        // Create NBXplorer format derivation scheme
+                        var derivationScheme = xpub + suffix;
+                        await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "BTC", storeData, key, result);
+                    }
                 }
-
-                // Create NBXplorer format derivation scheme
-                var derivationScheme = xpub + suffix;
-
-                await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "BTC", storeData, key, result);
             }
             catch (Exception btcex)
             {
@@ -145,7 +145,7 @@ public class ProtocolController(
                         // Convert script type to NBXplorer suffix format
                         //var suffix = GetNBXplorerSuffix(scriptType, descriptor);
                         var suffix = "-[p2sh]"; // For LBTC at the moment of launch, we assume P2SH_P2WPKH
-                        if (suffix == null)  
+                        if (suffix == null)
                         {
                             result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported LBTC script type: {scriptType}", null);
                         }
@@ -153,7 +153,6 @@ public class ProtocolController(
                         {
                             // Create NBXplorer format derivation scheme for LBTC: xpub + suffix + slip77
                             var derivationScheme = $"{xpub}{suffix}-[slip77={blindingKey}]";
-
                             await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "LBTC", storeData, key, result);
                         }
                     }
@@ -193,8 +192,11 @@ public class ProtocolController(
             var res = result.Results[SamrockProtocolKeys.BTC_LN];
             errorMessage = res.Message;
         }
-        
+
         samrockProtocolService.OtpUsed(otp, allSuccess, errorMessage);
+
+        logger.LogInformation("SamRockProtocol setup completed. setupModel={SetupModel} result={Result}", setupModel.ToJson(), result.ToJson());
+
         return Ok(new
         {
             Success = true,

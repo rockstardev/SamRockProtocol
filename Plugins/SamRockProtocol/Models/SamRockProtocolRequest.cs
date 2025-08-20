@@ -16,21 +16,6 @@ public class SamRockProtocolRequest
     
     [JsonProperty("BTC-LN")]
     public LightningGenericModel BTCLN { get; set; }
-    
-    public static SamRockProtocolRequest Parse(string json, out Exception parsingException)
-    {
-        try
-        {
-            var model = JsonConvert.DeserializeObject<SamRockProtocolRequest>(json);
-            parsingException = null;
-            return model;
-        }
-        catch (Exception ex)
-        {
-            parsingException = ex;
-            return null;
-        }
-    }
 }
 
 public class DescriptorModel
@@ -47,5 +32,3 @@ public class LightningGenericModel
     [JsonProperty("LBTC")]
     public DescriptorModel LBTC { get; set; }
 }
-
-
