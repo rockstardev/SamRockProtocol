@@ -17,6 +17,63 @@ This plugin enables quick setup for receiving funds from your BTCPay Server stor
 5. Scan this QR code with a compatible mobile wallet that supports the SamRock Protocol (e.g., Aqua Wallet). This will configure the necessary wallets on your
    mobile device and link them to your BTCPay Server store for receiving payments.
 
+
+## Protocol specification
+
+SamRock Protocol is triggered by scanning a QR code from BTCPay Server. The QR encodes a one-time setup URL:
+
+`https://<btcpayserver>/plugins/{storeId}/samrock/protocol?setup=btc-chain,liquid-chain,btc-ln&otp=<OTP>`
+
+The wallet must send a `POST` request to this URL with form field `json` containing setup details.
+
+### Request
+
+```http
+POST /plugins/{storeId}/samrock/protocol?otp=<OTP>
+Content-Type: application/x-www-form-urlencoded
+
+json={...}
+```
+
+### JSON structure
+
+```json
+{
+  "BTC": {
+    "Descriptor": "wpkh([8f681564/84'/0'/0']xpub6CUGRU.../0/*)#8m68c9t7"
+  },
+  "LBTC": {
+    "Descriptor": "ct(slip77(4a3b...ff9),elsh(wpkh([d34db33f/84'/1776'/0']xpub6FUGRU.../0/*)))"
+  },
+  "BTCLN": {
+    "Type": "Boltz",
+    "LBTC": {
+      "Descriptor": "..."
+    }
+  }
+}
+```
+
+* **BTC.Descriptor** – Standard output descriptor (wpkh, pkh, sh(wpkh), tr).
+* **LBTC.Descriptor** – Confidential descriptor with `slip77` blinding key and embedded descriptor.
+* **BTCLN** – Currently only `"Type": "Boltz"` is supported, with associated Liquid data.
+
+### Response
+
+```json
+{
+  "Success": true,
+  "Message": "Wallet setup successfully.",
+  "Result": {
+    "BTC":    { "Success": true },
+    "LBTC":   { "Success": true },
+    "BTC_LN": { "Success": true }
+  }
+}
+```
+
+Errors include `"Success": false` with `"Message"` and `"Error"` fields.
+
 ## Compatible Wallets
 
 * **Aqua Wallet**: ([aqua.net](https://aqua.net))
