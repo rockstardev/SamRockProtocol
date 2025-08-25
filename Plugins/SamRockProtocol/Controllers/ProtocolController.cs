@@ -55,6 +55,14 @@ public class ProtocolController(
         var setupModel = UtilJson.Parse<SamRockProtocolRequest>(jsonField, out var ex);
         if (setupModel == null)
             return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
+
+        // Only allow to setup payment methods that were selected in the initial import step
+        if (!importWalletModel.BtcChain && setupModel.BTC != null)
+            setupModel.BTC = null;
+        if (!importWalletModel.BtcLn && setupModel.BTCLN != null)
+            setupModel.BTCLN = null;
+        if (!importWalletModel.LiquidChain && setupModel.LBTC != null)
+            setupModel.LBTC = null;
         
         logger.LogInformation("SamRockProtocol request initiated. setupModel={SetupModel}", setupModel.ToJson());
         return await processSamRockProtocolRequest(setupModel, storeData, otp);

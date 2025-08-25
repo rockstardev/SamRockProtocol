@@ -86,6 +86,7 @@ public class SetupController : Controller
         {
             _samrockProtocolService.Remove(model.Otp);
         }
+
         return RedirectToAction(nameof(ImportWallets), new { storeId = model.StoreId });
     }
 
