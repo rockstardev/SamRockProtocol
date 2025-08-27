@@ -69,10 +69,7 @@ public class BoltzWrapper(
                 }
             }
 
-            boltzSettings.StandaloneWallet = new BoltzSettings.Wallet
-            {
-                Id = wallet.Id, Name = wallet.Name,
-            };
+            boltzSettings.SetStandaloneWallet(wallet);
             await boltzService.Set(storeId, boltzSettings);
             result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(true, null, null);
         }
