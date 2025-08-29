@@ -7,7 +7,7 @@ This plugin enables quick setup for receiving funds from your BTCPay Server stor
 1. Install the plugin by navigating to your BTCPay Server > Server Settings > Plugins, find "SamRock Protocol" in
    Available Plugins, install it, and restart your server.
    a. Ensure that the Boltz plugin is installed and enabled.
-   b. SamRock requires BTCPay Server v2.2.0 or newer (plugin dependency resolution introduced in this version).
+   b. SamRock requires BTCPay Server v2.1.6 or newer (plugin dependency resolution introduced in this version).
 2. Once installed, navigate to your Store > Plugins > SamRock Protocol
 3. You'll be presented with a form where you can select which payment methods you want to set up with your self-custodial wallet:
     * Bitcoin (On-chain)
