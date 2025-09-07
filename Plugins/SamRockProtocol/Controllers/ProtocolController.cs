@@ -57,11 +57,11 @@ public class ProtocolController(
             return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
 
         // Only allow to setup payment methods that were selected in the initial import step
-        if (!importWalletModel.BtcChain && setupModel.BTC != null)
+        if (!importWalletModel.Btc && setupModel.BTC != null)
             setupModel.BTC = null;
         if (!importWalletModel.BtcLn && setupModel.BTCLN != null)
             setupModel.BTCLN = null;
-        if (!importWalletModel.LiquidChain && setupModel.LBTC != null)
+        if (!importWalletModel.Lbtc && setupModel.LBTC != null)
             setupModel.LBTC = null;
         
         logger.LogInformation("SamRockProtocol request initiated. setupModel={SetupModel}", setupModel.ToJson());

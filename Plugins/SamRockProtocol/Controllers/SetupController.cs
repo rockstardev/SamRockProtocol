@@ -53,9 +53,9 @@ public class SetupController : Controller
     {
         var model = new ImportWalletsViewModel
         {
-            BtcChain = true,
+            Btc = true,
             BtcLn = true,
-            LiquidChain = true,
+            Lbtc = true,
             LiquidSupportedOnServer = _explorerProvider.GetNetwork("LBTC") != null
         };
         return View(model);
@@ -64,7 +64,7 @@ public class SetupController : Controller
     [HttpPost("ImportWallets")]
     public IActionResult ImportWallets(ImportWalletsViewModel model)
     {
-        if (!ModelState.IsValid || (!model.BtcChain && !model.BtcLn && !model.LiquidChain))
+        if (!ModelState.IsValid || (!model.Btc && !model.BtcLn && !model.Lbtc))
         {
             ModelState.AddModelError("", "At least one wallet type must be selected.");
             return View(model);
@@ -119,7 +119,8 @@ public class SetupController : Controller
     {
         var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
         var setupParams = string.Join(",",
-            new[] { model.BtcChain ? "btc-chain" : null, model.LiquidChain ? "liquid-chain" : null, model.BtcLn ? "btc-ln" : null }.Where(p => p != null));
+            new[] { model.Btc ? "btc-chain" : null, model.Lbtc ? "liquid-chain" : null, model.BtcLn ? "btc-ln" : null }.Where(p => p != null));
+            //new[] { model.Btc ? "btc" : null, model.Lbtc ? "lbtc" : null, model.BtcLn ? "btcln" : null }.Where(p => p != null));
 
         return
             $"{baseUrl}/plugins/{model.StoreId}/samrock/protocol?setup={Uri.EscapeDataString(setupParams)}&otp={Uri.EscapeDataString(otp)}";
@@ -131,13 +132,13 @@ public class ImportWalletsViewModel
     public string StoreId { get; set; }
 
     [DisplayName("Bitcoin")]
-    public bool BtcChain { get; set; }
+    public bool Btc { get; set; }
 
     [DisplayName("Lightning")]
     public bool BtcLn { get; set; }
 
     [DisplayName("Liquid Bitcoin")]
-    public bool LiquidChain { get; set; }
+    public bool Lbtc { get; set; }
 
     public string QrCode { get; set; }
     public string Otp { get; set; }
