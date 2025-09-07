@@ -20,9 +20,12 @@ This plugin enables quick setup for receiving funds from your BTCPay Server stor
 
 ## Protocol specification
 
-SamRock Protocol is triggered by scanning a QR code from BTCPay Server. The QR encodes a one-time setup URL:
+SamRock Protocol is triggered by selecting payment methods to setup on BTCPay Server and generating QR code. The QR encodes a one-time setup URL:
 
-`https://<btcpayserver>/plugins/{storeId}/samrock/protocol?setup=btc-chain,liquid-chain,btc-ln&otp=<OTP>`
+`https://<btcpayserver>/plugins/{storeId}/samrock/protocol?setup=btc,lbtc,btcln,&otp=<OTP>`
+
+Optionally, protocol may signal to wallet to upload all payment methods using `setup=all` querystring parameter.
+If `setup` parameter is omitted, wallet should default to `setup=all` and sending all supported payment methods.
 
 The wallet must send a `POST` request to this URL with form field `json` containing setup details.
 
