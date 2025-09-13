@@ -83,6 +83,152 @@ Errors include `"Success": false` with `"Message"` and `"Error"` fields.
     * [iOS Download](https://apps.apple.com/us/app/aqua-wallet/id6468594241)
     * [Android Download](https://play.google.com/store/apps/details?id=io.aquawallet.android)
 
-## License
 
+## Greenfield API
+
+The plugin exposes a Greenfield API to automate OTP creation and follow the setup flow programmatically.
+
+### Authentication and Permissions
+
+* Auth scheme: `Greenfield`
+* Permissions:
+  * Create/Delete OTP: `Policies.CanModifyStoreSettings`
+  * Get OTP status/QR: `Policies.CanViewStoreSettings`
+
+### Rate Limiting
+
+* Zone: `SamRockProtocol`
+* Default: `5 requests / minute` with `burst=3` per remote address
+
+### Endpoints
+
+Base path: `/api/v1/stores/{storeId}/samrock`
+
+1) Create OTP
+
+POST `/api/v1/stores/{storeId}/samrock/otps`
+
+Headers:
+
+```bash
+Authorization: token <your-greenfield-token>
+Content-Type: application/json
+```
+
+Body:
+
+```json
+{
+  "btc": true,
+  "btcln": true,
+  "lbtc": false,
+  "expiresInSeconds": 300
+}
+```
+
+Response 201:
+
+```json
+{
+  "otp": "<opaque-token>",
+  "expiresAt": "2025-01-01T12:00:00Z",
+  "setupUrl": "https://<btcpay>/plugins/<storeId>/samrock/protocol?setup=btc-chain,liquid-chain,btc-ln&otp=<OTP>"
+}
+```
+
+2) Get OTP Status
+
+GET `/api/v1/stores/{storeId}/samrock/otps/{otp}`
+
+Headers:
+
+```bash
+Authorization: token <your-greenfield-token>
+Accept: application/json
+```
+
+Response 200:
+
+```json
+{
+  "otp": "<OTP>",
+  "expiresAt": "2025-01-01T12:00:00Z",
+  "setupUrl": "https://...",
+  "status": "pending | success | error",
+  "errorMessage": "optional"
+}
+```
+
+3) Get OTP QR (PNG or SVG)
+
+GET `/api/v1/stores/{storeId}/samrock/otps/{otp}/qr`
+
+Headers (choose one):
+
+```bash
+Authorization: token <your-greenfield-token>
+Accept: image/png
+```
+
+or
+
+```bash
+Authorization: token <your-greenfield-token>
+Accept: image/svg+xml
+```
+
+Response:
+
+* `image/png` — QR code PNG
+* `image/svg+xml` — QR code SVG
+
+4) Delete OTP
+
+DELETE `/api/v1/stores/{storeId}/samrock/otps/{otp}`
+
+Headers:
+
+```bash
+Authorization: token <your-greenfield-token>
+```
+
+Response 200 on success or if already consumed/expired.
+
+### cURL Examples
+
+Create OTP:
+
+```bash
+curl -X POST \
+  -H "Authorization: token $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"btc":true,"btcln":true,"lbtc":false,"expiresInSeconds":300}' \
+  https://<btcpay>/api/v1/stores/<storeId>/samrock/otps
+```
+
+Get Status:
+
+```bash
+curl -H "Authorization: token $API_KEY" \
+  https://<btcpay>/api/v1/stores/<storeId>/samrock/otps/<otp>
+```
+
+Get QR as SVG:
+
+```bash
+curl -H "Authorization: token $API_KEY" \
+  -H "Accept: image/svg+xml" \
+  https://<btcpay>/api/v1/stores/<storeId>/samrock/otps/<otp>/qr > otp.svg
+```
+
+Delete OTP:
+
+```bash
+curl -X DELETE \
+  -H "Authorization: token $API_KEY" \
+  https://<btcpay>/api/v1/stores/<storeId>/samrock/otps/<otp>
+```
+
+
+## License
 https://github.com/rockstardev/Aqua.BTCPayPlugin/blob/master/LICENSE
