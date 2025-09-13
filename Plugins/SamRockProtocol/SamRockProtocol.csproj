@@ -11,7 +11,7 @@
         <Description>Get paid online, receive funds on your phone.
             SamRock Protocol links your store to self-custodial wallet via a simple QR scan. Try it with Aqua Wallet!
         </Description>
-        <Version>1.0.1</Version>
+        <Version>1.0.2</Version>
     </PropertyGroup>
 
     <!-- Plugin development properties -->
