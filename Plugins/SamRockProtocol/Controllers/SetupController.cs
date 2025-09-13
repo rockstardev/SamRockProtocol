@@ -21,6 +21,7 @@ using NBitcoin;
 using Newtonsoft.Json;
 using NicolasDorier.RateLimits;
 using SamRockProtocol.Services;
+using SamRockProtocol.Models;
 
 namespace SamRockProtocol.Controllers;
 
@@ -119,29 +120,4 @@ public class SetupController : Controller
 
         return View(model);
     }
-}
-
-public class ImportWalletsViewModel
-{
-    public string StoreId { get; set; }
-
-    [DisplayName("Bitcoin")]
-    public bool Btc { get; set; }
-
-    [DisplayName("Lightning")]
-    public bool BtcLn { get; set; }
-
-    [DisplayName("Liquid Bitcoin")]
-    public bool Lbtc { get; set; }
-
-    public string QrCode { get; set; }
-    public string Otp { get; set; }
-    public DateTimeOffset Expires { get; set; }
-    public bool LiquidSupportedOnServer { get; set; }
-}
-
-public class ImportResultViewModel
-{
-    public bool? OtpStatus { get; set; }
-    public string ErrorMessage { get; set; }
 }

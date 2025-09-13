@@ -7,7 +7,7 @@ using BTCPayServer;
 using BTCPayServer.HostedServices;
 using Microsoft.Extensions.Logging;
 using NicolasDorier.RateLimits;
-using SamRockProtocol.Controllers;
+using SamRockProtocol.Models;
 
 namespace SamRockProtocol.Services;
 

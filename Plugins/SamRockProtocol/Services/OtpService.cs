@@ -1,7 +1,7 @@
 using System;
 using System.Linq;
 using QRCoder;
-using SamRockProtocol.Controllers;
+using SamRockProtocol.Models;
 
 namespace SamRockProtocol.Services;
 
@@ -48,6 +48,14 @@ public class OtpService
         using var qrCodeData = qrGenerator.CreateQrCode(content, eccLevel);
         var pngQrCode = new PngByteQRCode(qrCodeData);
         return pngQrCode.GetGraphic(pixelsPerModule);
+    }
+
+    public string GenerateQrSvg(string content, int pixelsPerModule = 10, QRCodeGenerator.ECCLevel eccLevel = QRCodeGenerator.ECCLevel.M)
+    {
+        using var qrGenerator = new QRCodeGenerator();
+        using var qrCodeData = qrGenerator.CreateQrCode(content, eccLevel);
+        var svgQrCode = new SvgQRCode(qrCodeData);
+        return svgQrCode.GetGraphic(pixelsPerModule);
     }
 
     private static string BuildSetupUrl(ImportWalletsViewModel model, string otp, string baseUrl)

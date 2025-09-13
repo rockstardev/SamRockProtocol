@@ -28,6 +28,9 @@ public class GreenfieldSamrockController : ControllerBase
     [HttpPost("~/api/v1/stores/{storeId}/samrock/otps")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
     [RateLimitsFilter("SamRockProtocol", Scope = RateLimitsScope.RemoteAddress)]
+    [Consumes("application/json")]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(CreateOtpResponse), 201)]
     public IActionResult CreateOtp(string storeId, [FromBody] CreateOtpRequest request)
     {
         request ??= new CreateOtpRequest();
@@ -45,6 +48,8 @@ public class GreenfieldSamrockController : ControllerBase
 
     [HttpGet("~/api/v1/stores/{storeId}/samrock/otps/{otp}")]
     [Authorize(Policy = Policies.CanViewStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
+    [Produces("application/json")]
+    [ProducesResponseType(typeof(OtpStatusResponse), 200)]
     public IActionResult GetOtp(string storeId, string otp)
     {
         // Pending?
@@ -79,23 +84,35 @@ public class GreenfieldSamrockController : ControllerBase
 
     [HttpGet("~/api/v1/stores/{storeId}/samrock/otps/{otp}/qr")]
     [Authorize(Policy = Policies.CanViewStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
+    [Produces("image/png", "image/svg+xml")]
     public IActionResult GetOtpQr(string storeId, string otp)
     {
         if (_otpService.TryGet(otp, out var model))
         {
             if (!string.Equals(model.StoreId, storeId, StringComparison.Ordinal))
                 return this.CreateAPIError(404, "otp-not-found", "The OTP was not found for this store");
-            var png = _otpService.GenerateQrPng(model.QrCode);
-            return File(png, "image/png");
+            var accept = Request.Headers["Accept"].ToString();
+            if (!string.IsNullOrEmpty(accept) && accept.IndexOf("image/svg", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var svg = _otpService.GenerateQrSvg(model.QrCode);
+                return Content(svg, "image/svg+xml");
+            }
+            else
+            {
+                var png = _otpService.GenerateQrPng(model.QrCode);
+                return File(png, "image/png");
+            }
         }
         return this.CreateAPIError(404, "otp-not-found", "The OTP does not exist or has expired");
     }
 
     [HttpDelete("~/api/v1/stores/{storeId}/samrock/otps/{otp}")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
+    [Produces("application/json")]
+    [ProducesResponseType(200)]
     public IActionResult DeleteOtp(string storeId, string otp)
     {
-        if (_otpService.TryGet(otp, out var model))
+        if (_otpService.TryGet(otp, out var model)) 
         {
             if (!string.Equals(model.StoreId, storeId, StringComparison.Ordinal))
                 return this.CreateAPIError(404, "otp-not-found", "The OTP was not found for this store");
