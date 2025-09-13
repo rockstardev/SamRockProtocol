@@ -26,7 +26,7 @@ public class SamRockProtocolHostedService(
     {
         if (!_rateLimitsConfigured)
         {
-            rateLimitService.SetZone("zone=SamRockProtocol rate=5r/min burst=3 nodelay");
+            rateLimitService.SetZone("zone=SamRockProtocol rate=12r/min burst=3 nodelay");
             _rateLimitsConfigured = true;
         }
 
