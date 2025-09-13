@@ -29,14 +29,17 @@ namespace SamRockProtocol.Controllers;
 public class SetupController : Controller
 {
     private readonly ExplorerClientProvider _explorerProvider;
-    private readonly SamrockProtocolHostedService _samrockProtocolService;
+    private readonly SamRockProtocolHostedService _samrockProtocolService;
+    private readonly OtpService _otpService;
 
     public SetupController(
-        SamrockProtocolHostedService samrockProtocolService,
-        ExplorerClientProvider explorerProvider)
+        SamRockProtocolHostedService samrockProtocolService,
+        ExplorerClientProvider explorerProvider,
+        OtpService otpService)
     {
         _samrockProtocolService = samrockProtocolService;
         _explorerProvider = explorerProvider;
+        _otpService = otpService;
     }
 
     [FromRoute]
@@ -70,12 +73,14 @@ public class SetupController : Controller
             return View(model);
         }
 
-        model.Otp = OtpGenerator.Generate();
         model.StoreId = StoreId;
-        model.Expires = DateTimeOffset.UtcNow.AddMinutes(5);
-        model.QrCode = GenerateSetupUrl(model, model.Otp);
+        var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
+        var created = _otpService.CreateOtp(StoreId, model.Btc, model.BtcLn, model.Lbtc, baseUrl);
 
-        _samrockProtocolService.Add(model.Otp, model);
+        model.Otp = created.Otp;
+        model.Expires = created.Expires;
+        model.QrCode = created.QrCode;
+
         return View(model);
     }
 
@@ -112,18 +117,6 @@ public class SetupController : Controller
         }
 
         return View(model);
-    }
-
-
-    private string GenerateSetupUrl(ImportWalletsViewModel model, string otp)
-    {
-        var baseUrl = $"{Request.Scheme}://{Request.Host}{Request.PathBase}";
-        var setupParams = string.Join(",",
-            new[] { model.Btc ? "btc-chain" : null, model.Lbtc ? "liquid-chain" : null, model.BtcLn ? "btc-ln" : null }.Where(p => p != null));
-            //new[] { model.Btc ? "btc" : null, model.Lbtc ? "lbtc" : null, model.BtcLn ? "btcln" : null }.Where(p => p != null));
-
-        return
-            $"{baseUrl}/plugins/{model.StoreId}/samrock/protocol?setup={Uri.EscapeDataString(setupParams)}&otp={Uri.EscapeDataString(otp)}";
     }
 }
 

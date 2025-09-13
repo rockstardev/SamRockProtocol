@@ -69,12 +69,12 @@ public enum AddressTypes
     P2TR
 }
 
-public class SamrockProtocolSetupResponse
+public class SamRockProtocolSetupResponse
 {
-    public Dictionary<SamrockProtocolKeys, SamRockProtocolResponse> Results { get; init; } = new();
+    public Dictionary<SamRockProtocolKeys, SamRockProtocolResponse> Results { get; init; } = new();
 }
 
-public enum SamrockProtocolKeys
+public enum SamRockProtocolKeys
 {
     BTC,
     BTC_LN,

@@ -42,6 +42,10 @@
         <EmbeddedResource Include="Resources\**"/>
     </ItemGroup>
 
+    <ItemGroup>
+        <PackageReference Include="QRCoder" Version="1.6.0" />
+    </ItemGroup>
+
     <!-- Conditional Boltz reference -->
     <ItemGroup Condition="'$(EnableBoltzSupport)' == 'true'">
         <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj"/>

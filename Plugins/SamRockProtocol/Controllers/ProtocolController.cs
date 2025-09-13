@@ -25,7 +25,7 @@ namespace SamRockProtocol.Controllers;
 [Route("~/plugins/{storeId}/samrock")]
 [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ProtocolController(
-    SamrockProtocolHostedService samrockProtocolService,
+    SamRockProtocolHostedService samrockProtocolService,
     PaymentMethodHandlerDictionary handlers,
     ExplorerClientProvider explorerProvider,
     BTCPayWalletProvider walletProvider,
@@ -41,7 +41,7 @@ public class ProtocolController(
     [AllowAnonymous]
     [RateLimitsFilter("SamRockProtocol", Scope = RateLimitsScope.RemoteAddress)]
     [HttpPost("protocol")]
-    public async Task<IActionResult> SamrockProtocol()
+    public async Task<IActionResult> SamRockProtocol()
     {
         var otp = Request.Query["otp"].ToString();
         if (string.IsNullOrEmpty(otp) || !samrockProtocolService.TryGet(otp, out var importWalletModel))
@@ -70,10 +70,10 @@ public class ProtocolController(
 
     private async Task<IActionResult> processSamRockProtocolRequest(SamRockProtocolRequest setupModel, StoreData storeData, string otp)
     {
-        var result = new SamrockProtocolSetupResponse();
+        var result = new SamRockProtocolSetupResponse();
         if (setupModel.BTC != null && !string.IsNullOrEmpty(setupModel.BTC.Descriptor))
         {
-            var key = SamrockProtocolKeys.BTC;
+            var key = SamRockProtocolKeys.BTC;
             try
             {
                 // Parse output descriptor format and convert to NBXplorer format
@@ -120,7 +120,7 @@ public class ProtocolController(
 
         if (setupModel.LBTC != null && !string.IsNullOrEmpty(setupModel.LBTC.Descriptor))
         {
-            var key = SamrockProtocolKeys.LBTC;
+            var key = SamRockProtocolKeys.LBTC;
 
             if (explorerProvider.GetNetwork("LBTC") != null)
             {
@@ -185,7 +185,7 @@ public class ProtocolController(
             }
             else
             {
-                result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false,
+                result.Results[SamRockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false,
                     $"Lightning setup configured with unknown type: {setupModel.BTCLN.Type}", null);
             }
         }
@@ -195,9 +195,9 @@ public class ProtocolController(
 
         var allSuccess = result.Results.Values.All(a => a.Success);
         string errorMessage = null;
-        if (!allSuccess && result.Results[SamrockProtocolKeys.BTC_LN] != null)
+        if (!allSuccess && result.Results[SamRockProtocolKeys.BTC_LN] != null)
         {
-            var res = result.Results[SamrockProtocolKeys.BTC_LN];
+            var res = result.Results[SamRockProtocolKeys.BTC_LN];
             errorMessage = res.Message;
         }
 
@@ -214,7 +214,7 @@ public class ProtocolController(
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string fingerprint, string derivationPath, string networkCode,
-        StoreData storeData, SamrockProtocolKeys key, SamrockProtocolSetupResponse result)
+        StoreData storeData, SamRockProtocolKeys key, SamRockProtocolSetupResponse result)
     {
         if (string.IsNullOrEmpty(derivationScheme) || explorerProvider.GetNetwork(networkCode) == null)
         {

@@ -25,10 +25,11 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
         services.AddUIExtension("dashboard-setup-guide-payment", "SamRockProtocolSetupPayments");
         services.AddUIExtension("store-integrations-nav", "SamRockProtocolNav");
 
-        services.AddSingleton<SamrockProtocolHostedService>();
-        services.AddScheduledTask<SamrockProtocolHostedService>(TimeSpan.FromMinutes(1));
+        services.AddSingleton<SamRockProtocolHostedService>();
+        services.AddScheduledTask<SamRockProtocolHostedService>(TimeSpan.FromMinutes(1));
         services.AddSingleton<BoltzWrapper>();
+        services.AddSingleton<OtpService>();
 
-        services.AddRateLimits(); // configured in SamrockProtocolHostedService
+        services.AddRateLimits(); // configured in SamRockProtocolHostedService
     }
 }

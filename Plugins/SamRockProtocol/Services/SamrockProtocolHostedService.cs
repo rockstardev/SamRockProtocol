@@ -11,14 +11,14 @@ using SamRockProtocol.Controllers;
 
 namespace SamRockProtocol.Services;
 
-public class SamrockProtocolHostedService(
+public class SamRockProtocolHostedService(
     EventAggregator eventAggregator,
     ILogger<PendingTransactionService> logger,
     RateLimitService rateLimitService)
     : EventHostedServiceBase(eventAggregator, logger), IPeriodicTask
 {
     private readonly Dictionary<string, ImportWalletsViewModel> _samrockImportDictionary = new();
-    private readonly Dictionary<string, SamrockResult> _samrockResults = new();
+    private readonly Dictionary<string, SamRockResult> _samrockResults = new();
 
     private bool _rateLimitsConfigured;
 
@@ -26,7 +26,7 @@ public class SamrockProtocolHostedService(
     {
         if (!_rateLimitsConfigured)
         {
-            rateLimitService.SetZone("zone=SamrockProtocol rate=5r/min burst=3 nodelay");
+            rateLimitService.SetZone("zone=SamRockProtocol rate=5r/min burst=3 nodelay");
             _rateLimitsConfigured = true;
         }
 
@@ -77,10 +77,10 @@ public class SamrockProtocolHostedService(
     public void OtpUsed(string otp, bool importSuccessful, string errorMessage = null)
     {
         if (_samrockImportDictionary.Remove(otp, out var value))
-            _samrockResults.Add(otp, new SamrockResult { ImportSuccessful = importSuccessful, ErrorMessage = errorMessage, Expires = value.Expires });
+            _samrockResults.Add(otp, new SamRockResult { ImportSuccessful = importSuccessful, ErrorMessage = errorMessage, Expires = value.Expires, StoreId = value.StoreId });
     }
 
-    public SamrockResult OtpStatus(string otp)
+    public SamRockResult OtpStatus(string otp)
     {
         if (_samrockResults.TryGetValue(otp, out var value)) 
             return value;
@@ -88,11 +88,12 @@ public class SamrockProtocolHostedService(
         return null;
     }
 
-    public class SamrockResult
+    public class SamRockResult
     {
         public bool ImportSuccessful { get; set; }
         public string ErrorMessage { get; set; }
         public DateTimeOffset Expires { get; set; }
+        public string StoreId { get; set; }
     }
 
     public class CheckForExpiryEvent

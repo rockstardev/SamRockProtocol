@@ -21,7 +21,7 @@ public class BoltzWrapper(
     ILogger<BoltzWrapper> logger
     )
 {
-    public async Task SetBoltz(string storeId, string ctDescriptor, SamrockProtocolSetupResponse result)
+    public async Task SetBoltz(string storeId, string ctDescriptor, SamRockProtocolSetupResponse result)
     {
 #if BOLTZ_SUPPORT
         logger.LogInformation("BoltzWrapper.SetBoltz setting up Boltz. StoreId={storeId}, CtDescriptor={ctDescriptor}", storeId, ctDescriptor);
@@ -61,7 +61,7 @@ public class BoltzWrapper(
                 catch (RpcException ex2) when (ex2.StatusCode == StatusCode.InvalidArgument && ex2.Status.Detail.Contains("has the same credentials"))
                 {
                     logger.LogWarning("Collision with existing wallet, likely in another store. Error: " + ex2.Status.Detail);
-                    result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, 
+                    result.Results[SamRockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, 
                         $"Collision with existing wallet, likely in another store. Error: " + ex2.Status.Detail, ex2);
                     
                     // If we can't import due to a collision, we don't want to proceed
@@ -71,22 +71,22 @@ public class BoltzWrapper(
 
             boltzSettings.SetStandaloneWallet(wallet);
             await boltzService.Set(storeId, boltzSettings);
-            result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(true, null, null);
+            result.Results[SamRockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(true, null, null);
         }
         catch (RpcException ex)
         {
             logger.LogError(ex, "Failed to import wallet.");
-            result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, $"Failed to import wallet. {ex.Status.Detail}", ex);
+            result.Results[SamRockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, $"Failed to import wallet. {ex.Status.Detail}", ex);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to import wallet.");
-            result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, "Failed to import wallet.", ex);
+            result.Results[SamRockProtocol.Models.SamRockProtocolKeys.BTC_LN] = new SamRockProtocol.Models.SamRockProtocolResponse(false, "Failed to import wallet.", ex);
         }
 #else
         // Boltz support is disabled
         logger.LogWarning("Boltz support is not enabled. Cannot set up Boltz wallet.");
-        result.Results[SamrockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false, "Boltz support is not enabled in this build.", null);
+        result.Results[SamRockProtocol.Models.SamRockProtocolKeys.BTC_LN] = new SamRockProtocol.Models.SamRockProtocolResponse(false, "Boltz support is not enabled in this build.", null);
 #endif
     }
     
