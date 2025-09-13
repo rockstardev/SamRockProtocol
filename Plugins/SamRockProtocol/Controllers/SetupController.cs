@@ -65,6 +65,7 @@ public class SetupController : Controller
     }
 
     [HttpPost("ImportWallets")]
+    [RateLimitsFilter("SamRockProtocol", Scope = RateLimitsScope.RemoteAddress)]
     public IActionResult ImportWallets(ImportWalletsViewModel model)
     {
         if (!ModelState.IsValid || (!model.Btc && !model.BtcLn && !model.Lbtc))

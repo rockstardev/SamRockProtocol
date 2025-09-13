@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using SamRockProtocol.Services;
+using NicolasDorier.RateLimits;
 
 namespace SamRockProtocol.Controllers;
 
@@ -26,6 +27,7 @@ public class GreenfieldSamrockController : ControllerBase
 
     [HttpPost("~/api/v1/stores/{storeId}/samrock/otps")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Greenfield)]
+    [RateLimitsFilter("SamRockProtocol", Scope = RateLimitsScope.RemoteAddress)]
     public IActionResult CreateOtp(string storeId, [FromBody] CreateOtpRequest request)
     {
         request ??= new CreateOtpRequest();
