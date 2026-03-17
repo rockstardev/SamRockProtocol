@@ -43,7 +43,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="QRCoder" Version="1.6.0" />
+        <PackageReference Include="QRCoder" Version="*" />
     </ItemGroup>
 
     <!-- Conditional Boltz reference -->

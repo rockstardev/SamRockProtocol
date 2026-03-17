@@ -27,7 +27,7 @@ public class BoltzWrapper(
         logger.LogInformation("BoltzWrapper.SetBoltz setting up Boltz. StoreId={storeId}, CtDescriptor={ctDescriptor}", storeId, ctDescriptor);
         try
         {
-            var boltzSettings = await boltzService.InitializeStore(storeId, BoltzMode.Standalone);
+            var boltzSettings = await boltzService.InitializeStore(storeId);
             var boltzClient = boltzService.Daemon.GetClient(boltzSettings);
 
             // 1) Normalize descriptor
