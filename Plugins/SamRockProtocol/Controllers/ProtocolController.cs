@@ -20,6 +20,7 @@ using SamRockProtocol.Services;
 using SamRockProtocol.Models;
 using Microsoft.Extensions.Logging;
 using BTCPayServer.Common;
+using Microsoft.AspNetCore.Http;
 
 namespace SamRockProtocol.Controllers;
 
