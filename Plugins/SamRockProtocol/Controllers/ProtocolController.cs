@@ -41,6 +41,7 @@ public class ProtocolController(
     public string StoreId { get; set; }
 
     [AllowAnonymous]
+    [IgnoreAntiforgeryToken] // dart/dio update now causes Form[""] to break, so this is needed
     [RateLimitsFilter("SamRockProtocol", Scope = RateLimitsScope.RemoteAddress)]
     [HttpPost("protocol")]
     public async Task<IActionResult> SamRockProtocol()
