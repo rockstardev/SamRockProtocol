@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -51,7 +52,7 @@ public class ProtocolController(
         if (storeData == null)
             return NotFound(new SamRockProtocolResponse(false, "Store not found.", null));
 
-        var jsonField = Request.Form["json"];
+        var jsonField = await ReadJsonField();
         var setupModel = UtilJson.Parse<SamRockProtocolRequest>(jsonField, out var ex);
         if (setupModel == null)
             return BadRequest(new SamRockProtocolResponse(false, "Invalid JSON format.", ex));
@@ -66,6 +67,74 @@ public class ProtocolController(
         
         logger.LogInformation("SamRockProtocol request initiated. setupModel={SetupModel}", setupModel.ToJson());
         return await processSamRockProtocolRequest(setupModel, storeData, otp);
+    }
+
+    /// <summary>
+    /// Reads the "json" field from the request body, tolerating multiple content types.
+    /// AQUA wallet (Dart/Dio) switched from application/x-www-form-urlencoded to
+    /// multipart/form-data with a malformed boundary prefix, which ASP.NET Core's
+    /// form parser rejects. This method falls back to raw body parsing when that happens.
+    /// </summary>
+    private async Task<string> ReadJsonField()
+    {
+        Request.EnableBuffering();
+
+        try
+        {
+            var formValue = Request.Form["json"].ToString();
+            if (!string.IsNullOrEmpty(formValue))
+                return formValue;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Form parsing failed, falling back to raw body parsing");
+        }
+
+        Request.Body.Position = 0;
+        using var reader = new StreamReader(Request.Body, leaveOpen: true);
+        var body = await reader.ReadToEndAsync();
+        if (string.IsNullOrEmpty(body))
+            return null;
+
+        var trimmed = body.Trim();
+
+        // Direct JSON body (application/json)
+        if (trimmed.StartsWith("{"))
+            return trimmed;
+
+        // URL-encoded: json={...}
+        var jsonIdx = body.IndexOf("json=", StringComparison.Ordinal);
+        if (jsonIdx >= 0)
+        {
+            var value = body.Substring(jsonIdx + 5);
+            var ampIdx = value.IndexOf('&');
+            if (ampIdx >= 0)
+                value = value.Substring(0, ampIdx);
+            return Uri.UnescapeDataString(value);
+        }
+
+        // Multipart: extract content after name="json" field header
+        var nameIdx = body.IndexOf("name=\"json\"", StringComparison.Ordinal);
+        if (nameIdx >= 0)
+        {
+            var afterName = body.Substring(nameIdx);
+            var blankLine = afterName.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (blankLine < 0)
+                blankLine = afterName.IndexOf("\n\n", StringComparison.Ordinal);
+            if (blankLine >= 0)
+            {
+                var headerEnd = afterName[blankLine] == '\r' ? blankLine + 4 : blankLine + 2;
+                var content = afterName.Substring(headerEnd);
+                var boundaryIdx = content.IndexOf("\r\n--", StringComparison.Ordinal);
+                if (boundaryIdx < 0)
+                    boundaryIdx = content.IndexOf("\n--", StringComparison.Ordinal);
+                if (boundaryIdx >= 0)
+                    content = content.Substring(0, boundaryIdx);
+                return content.Trim();
+            }
+        }
+
+        return null;
     }
 
     private async Task<IActionResult> processSamRockProtocolRequest(SamRockProtocolRequest setupModel, StoreData storeData, string otp)
