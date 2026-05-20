@@ -147,9 +147,7 @@ public class ProtocolController(
             var key = SamRockProtocolKeys.BTC;
             try
             {
-                // Parse output descriptor format and convert to NBXplorer format
-                // Input: wpkh([8f681564/84'/0'/0']xpub...xxx/0/*)#8m68c9t7
-                var descriptor = setupModel.BTC.Descriptor;
+                var descriptor = NormalizeDescriptor(setupModel.BTC.Descriptor);
 
                 // Extract script type, fingerprint, derivation path, xpub, and address derivation suffix
                 var match = Regex.Match(descriptor, @"^(\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)(?:#[a-zA-Z0-9]+)?$");
@@ -162,7 +160,7 @@ public class ProtocolController(
                 {
                     var scriptType = match.Groups[1].Value;
                     var fingerprint = match.Groups[2].Value;
-                    var basePath = match.Groups[3].Value;
+                    var basePath = NormalizeDerivationPath(match.Groups[3].Value);
                     var xpub = match.Groups[4].Value;
                     var addressSuffix = match.Groups[5].Value; // e.g., "/0/*"
 
@@ -197,43 +195,16 @@ public class ProtocolController(
             {
                 try
                 {
-                    // Parse LBTC output descriptor format and convert to NBXplorer format
-                    // Input: ct(slip77(blinding_key),elsh(wpkh([fingerprint/path]xpub...)))
-                    var descriptor = setupModel.LBTC.Descriptor;
-
-                    // Extract slip77 blinding key, script type, fingerprint, derivation path, xpub, and address derivation suffix
-                    var match = Regex.Match(descriptor,
-                        @"^ct\(slip77\(([a-fA-F0-9]{64})\),elsh\((\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)\)\)(?:#[a-zA-Z0-9]+)?");
-                    if (!match.Success)
+                    var descriptor = NormalizeDescriptor(setupModel.LBTC.Descriptor);
+                    if (!TryParseLiquidDescriptor(descriptor, out var blindingKey, out var suffix, out var fingerprint,
+                            out var derivationPath, out var xpub, out var error))
                     {
-                        result.Results[key] = new SamRockProtocolResponse(false,
-                            "Invalid LBTC descriptor format - could not parse slip77, script type, fingerprint, derivation path, and xpub.", null);
+                        result.Results[key] = new SamRockProtocolResponse(false, error, null);
                     }
                     else
                     {
-                        var blindingKey = match.Groups[1].Value;
-                        var scriptType = match.Groups[2].Value;
-                        var fingerprint = match.Groups[3].Value;
-                        var basePath = match.Groups[4].Value;
-                        var xpub = match.Groups[5].Value;
-                        var addressSuffix = match.Groups[6].Value; // e.g., "/0/*"
-
-                        // TODO: Check whether you need to combine base derivation path with address derivation suffix
-                        var derivationPath = basePath; // + (addressSuffix ?? "");
-
-                        // Convert script type to NBXplorer suffix format
-                        //var suffix = GetNBXplorerSuffix(scriptType, descriptor);
-                        var suffix = "-[p2sh]"; // For LBTC at the moment of launch, we assume P2SH_P2WPKH
-                        if (suffix == null)
-                        {
-                            result.Results[key] = new SamRockProtocolResponse(false, $"Unsupported LBTC script type: {scriptType}", null);
-                        }
-                        else
-                        {
-                            // Create NBXplorer format derivation scheme for LBTC: xpub + suffix + slip77
-                            var derivationScheme = $"{xpub}{suffix}-[slip77={blindingKey}]";
-                            await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "LBTC", storeData, key, result);
-                        }
+                        var derivationScheme = $"{xpub}{suffix}-[slip77={blindingKey}]";
+                        await SetupWalletAsync(derivationScheme, fingerprint, derivationPath, "LBTC", storeData, key, result);
                     }
                 }
                 catch (Exception lbtcex)
@@ -259,7 +230,7 @@ public class ProtocolController(
                 }
                 else
                 {
-                    await boltzWrapper.SetBoltz(StoreId, setupModel.BTCLN.LBTC.Descriptor, result);
+                    await boltzWrapper.SetBoltz(StoreId, NormalizeDescriptor(setupModel.BTCLN.LBTC.Descriptor), result);
                 }
             }
             else
@@ -289,6 +260,76 @@ public class ProtocolController(
             Message = allSuccess ? "Wallet setup successfully." : "Wallet setup failed.",
             Result = result
         });
+    }
+
+    private static string NormalizeDescriptor(string descriptor)
+    {
+        if (descriptor == null)
+            return null;
+
+        return Regex.Replace(descriptor, @"\s+", string.Empty);
+    }
+
+    private static string NormalizeDerivationPath(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return path;
+
+        return string.Join('/', path.Split('/').Select(component =>
+            component.EndsWith("h", StringComparison.OrdinalIgnoreCase)
+                ? component[..^1] + "'"
+                : component));
+    }
+
+    private static bool TryParseLiquidDescriptor(string descriptor, out string blindingKey, out string suffix,
+        out string fingerprint, out string derivationPath, out string xpub, out string error)
+    {
+        blindingKey = null;
+        suffix = null;
+        fingerprint = null;
+        derivationPath = null;
+        xpub = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(descriptor))
+        {
+            error = "Invalid LBTC descriptor format - descriptor is empty.";
+            return false;
+        }
+
+        var nativeMatch = Regex.Match(descriptor,
+            @"^ct\(slip77\(([a-fA-F0-9]{64})\),elwpkh\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)\)(?:#[a-zA-Z0-9]+)?$");
+        if (nativeMatch.Success)
+        {
+            blindingKey = nativeMatch.Groups[1].Value;
+            fingerprint = nativeMatch.Groups[2].Value;
+            derivationPath = NormalizeDerivationPath(nativeMatch.Groups[3].Value);
+            xpub = nativeMatch.Groups[4].Value;
+            suffix = "";
+            return true;
+        }
+
+        var wrappedMatch = Regex.Match(descriptor,
+            @"^ct\(slip77\(([a-fA-F0-9]{64})\),elsh\((\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)\)\)(?:#[a-zA-Z0-9]+)?$");
+        if (wrappedMatch.Success)
+        {
+            var scriptType = wrappedMatch.Groups[2].Value;
+            if (!string.Equals(scriptType, "wpkh", StringComparison.OrdinalIgnoreCase))
+            {
+                error = $"Unsupported LBTC script type: elsh({scriptType})";
+                return false;
+            }
+
+            blindingKey = wrappedMatch.Groups[1].Value;
+            fingerprint = wrappedMatch.Groups[3].Value;
+            derivationPath = NormalizeDerivationPath(wrappedMatch.Groups[4].Value);
+            xpub = wrappedMatch.Groups[5].Value;
+            suffix = "-[p2sh]";
+            return true;
+        }
+
+        error = "Invalid LBTC descriptor format - expected ct(slip77(...),elwpkh(...)) or ct(slip77(...),elsh(wpkh(...))).";
+        return false;
     }
 
     private async Task SetupWalletAsync(string derivationScheme, string fingerprint, string derivationPath, string networkCode,
