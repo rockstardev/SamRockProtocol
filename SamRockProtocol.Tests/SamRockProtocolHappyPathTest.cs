@@ -103,22 +103,25 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
 
-        Assert.True(root.GetProperty("Success").GetBoolean(),
-            $"Outer Success expected true. Body: {body}");
+        // BTCPay's JSON serializer emits camelCase for the outer envelope
+        // (success/message/result/results) and preserves the explicit
+        // JsonProperty PascalCase for the per-method keys (BTC/LBTC).
+        Assert.True(root.GetProperty("success").GetBoolean(),
+            $"Outer success expected true. Body: {body}");
 
-        var results = root.GetProperty("Result").GetProperty("Results");
+        var results = root.GetProperty("result").GetProperty("results");
 
         var btcResult = results.GetProperty("BTC");
-        Assert.True(btcResult.GetProperty("Success").GetBoolean(),
-            $"BTC import expected Success=true. Result: {btcResult}");
+        Assert.True(btcResult.GetProperty("success").GetBoolean(),
+            $"BTC import expected success=true. Result: {btcResult}");
 
         // LBTC: BTCPay regtest stack ships without Elements/Liquid enabled.
         // ProtocolController.cs:244-248 returns Success=true with
         // "LBTC is not available on server, ignoring sent data" warning when
         // explorerProvider.GetNetwork("LBTC") is null. Either real-track or
-        // warning-success satisfies Success=true here.
+        // warning-success satisfies success=true here.
         var lbtcResult = results.GetProperty("LBTC");
-        Assert.True(lbtcResult.GetProperty("Success").GetBoolean(),
-            $"LBTC import expected Success=true. Result: {lbtcResult}");
+        Assert.True(lbtcResult.GetProperty("success").GetBoolean(),
+            $"LBTC import expected success=true. Result: {lbtcResult}");
     }
 }
