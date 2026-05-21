@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using BTCPayServer.Tests;
+using Microsoft.Extensions.DependencyInjection;
 using SamRockProtocol.Services;
 using Xunit;
 using Xunit.Abstractions;
@@ -48,6 +49,13 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         var srpAsm = AppDomain.CurrentDomain.GetAssemblies()
             .FirstOrDefault(a => a.GetName().Name == "SamRockProtocol");
         Assert.NotNull(srpAsm); // ensure plugin assembly is in AppDomain
+
+        var allPlugins = ServerTester.PayTester.ServiceProvider
+            .GetServices<BTCPayServer.Abstractions.Contracts.IBTCPayServerPlugin>()
+            .Select(p => $"{p.Identifier}@{p.Version}")
+            .ToList();
+        var pluginsList = string.Join(", ", allPlugins);
+        Assert.Contains(allPlugins, p => p.StartsWith("SamRockProtocol"));
 
         var otpService = ServerTester.PayTester.GetService<OtpService>();
         Assert.NotNull(otpService);
