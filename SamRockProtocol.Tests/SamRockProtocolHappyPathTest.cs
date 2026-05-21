@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -40,6 +42,12 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         await user.GrantAccessAsync();
         await user.MakeAdmin();
         var storeId = user.StoreId;
+
+        // Diagnostic: dump loaded assemblies + plugin DI registrations to
+        // narrow down why plugin services aren't visible to the test.
+        var srpAsm = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(a => a.GetName().Name == "SamRockProtocol");
+        Assert.NotNull(srpAsm); // ensure plugin assembly is in AppDomain
 
         var otpService = ServerTester.PayTester.GetService<OtpService>();
         Assert.NotNull(otpService);
