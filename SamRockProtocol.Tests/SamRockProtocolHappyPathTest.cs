@@ -10,7 +10,7 @@ namespace BTCPayServer.Plugins.Tests;
 
 [Collection("Plugin Tests")]
 [Trait("Category", "PlaywrightUITest")]
-public class SamRockProtocolHappyPathTest : PlaywrightBaseTest
+public class SamRockProtocolHappyPathTest : UnitTestBase
 {
     private readonly SharedPluginTestFixture _fixture;
 

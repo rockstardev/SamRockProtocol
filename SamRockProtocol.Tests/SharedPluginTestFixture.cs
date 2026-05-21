@@ -23,7 +23,7 @@ public class ConfigurablePluginTestFixture : IDisposable
         ServerTester = null;
     }
 
-    public void Initialize(PlaywrightBaseTest testInstance)
+    public void Initialize(UnitTestBase testInstance)
     {
         if (ServerTester == null)
         {
