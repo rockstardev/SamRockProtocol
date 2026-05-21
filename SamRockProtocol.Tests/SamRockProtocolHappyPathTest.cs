@@ -1,11 +1,14 @@
 using System;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Tests;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using SamRockProtocol.Services;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -46,40 +49,32 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         await user.MakeAdmin();
         var storeId = user.StoreId;
 
-        // Diagnostic: dump loaded assemblies + plugin DI registrations to
-        // narrow down why plugin services aren't visible to the test.
-        var srpAsm = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(a => a.GetName().Name == "SamRockProtocol");
-        Assert.NotNull(srpAsm); // ensure plugin assembly is in AppDomain
-
+        // Plugin-load diagnostic
         var allPlugins = ServerTester.PayTester.ServiceProvider
-            .GetServices<BTCPayServer.Abstractions.Contracts.IBTCPayServerPlugin>()
+            .GetServices<IBTCPayServerPlugin>()
             .Select(p => $"{p.Identifier}@{p.Version}")
             .ToList();
-        var pluginsList = string.Join(", ", allPlugins);
-        _helper.WriteLine($"Plugins in DI ({allPlugins.Count}): {pluginsList}");
+        _helper.WriteLine($"Plugins in DI ({allPlugins.Count}): {string.Join(", ", allPlugins)}");
 
-        var config = ServerTester.PayTester.ServiceProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>();
-        _helper.WriteLine($"DEBUG_PLUGINS config: '{config?["DEBUG_PLUGINS"]}'");
-        _helper.WriteLine($"AppContext.BaseDirectory: {AppContext.BaseDirectory}");
-        _helper.WriteLine($"appsettings.dev.json exists in BaseDirectory: {System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, "appsettings.dev.json"))}");
+        // OTP via Greenfield API with basic auth (admin credentials)
+        using var client = new HttpClient { BaseAddress = ServerTester.PayTester.ServerUri };
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            $"{user.RegisterDetails.Email}:{user.RegisterDetails.Password}"));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basic);
 
-        var otpServiceResolved = ServerTester.PayTester.ServiceProvider.GetService(typeof(OtpService));
-        _helper.WriteLine($"OtpService resolved: {otpServiceResolved != null}");
+        var otpReqBody = new { btc = true, btcln = false, lbtc = true };
+        var otpReq = new StringContent(JsonSerializer.Serialize(otpReqBody), Encoding.UTF8, "application/json");
+        var otpResp = await client.PostAsync($"api/v1/stores/{storeId}/samrock/otps", otpReq);
+        var otpRespBody = await otpResp.Content.ReadAsStringAsync();
+        Assert.True(otpResp.IsSuccessStatusCode,
+            $"OTP create expected 2xx, got {(int)otpResp.StatusCode}: {otpRespBody}");
 
-        var samrockPlugin = ServerTester.PayTester.ServiceProvider
-            .GetServices<BTCPayServer.Abstractions.Contracts.IBTCPayServerPlugin>()
-            .FirstOrDefault(p => p.Identifier == "SamRockProtocol");
-        _helper.WriteLine($"SamRockProtocol plugin in DI: {samrockPlugin != null}, type: {samrockPlugin?.GetType().FullName}, assembly: {samrockPlugin?.GetType().Assembly.Location}");
+        using var otpDoc = JsonDocument.Parse(otpRespBody);
+        var otp = otpDoc.RootElement.GetProperty("otp").GetString();
+        Assert.False(string.IsNullOrEmpty(otp));
 
-        Assert.NotNull(samrockPlugin);
-
-        var otpService = ServerTester.PayTester.GetService<OtpService>();
-        Assert.NotNull(otpService);
-        var serverUri = ServerTester.PayTester.ServerUri.ToString().TrimEnd('/');
-        var otpModel = otpService!.CreateOtp(storeId, btc: true, btcln: false, lbtc: true, baseUrl: serverUri);
-        Assert.False(string.IsNullOrEmpty(otpModel.Otp));
-
+        // Protocol POST (anonymous, OTP-gated)
+        using var anon = new HttpClient { BaseAddress = ServerTester.PayTester.ServerUri };
         var payload = new
         {
             Version = "1.0",
@@ -87,13 +82,12 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
             LBTC = new { Descriptor = LbtcDescriptor }
         };
         var json = JsonSerializer.Serialize(payload);
-
-        using var http = new HttpClient { BaseAddress = ServerTester.PayTester.ServerUri };
         var content = new StringContent(json, Encoding.UTF8, "application/json");
-        var response = await http.PostAsync($"plugins/{storeId}/samrock/protocol?otp={otpModel.Otp}", content);
+        var response = await anon.PostAsync($"plugins/{storeId}/samrock/protocol?otp={otp}", content);
         var body = await response.Content.ReadAsStringAsync();
 
-        Assert.True(response.IsSuccessStatusCode, $"Expected 2xx, got {(int)response.StatusCode}: {body}");
+        Assert.True(response.IsSuccessStatusCode,
+            $"Protocol POST expected 2xx, got {(int)response.StatusCode}: {body}");
 
         using var doc = JsonDocument.Parse(body);
         var root = doc.RootElement;
