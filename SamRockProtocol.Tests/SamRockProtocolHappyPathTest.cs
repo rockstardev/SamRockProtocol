@@ -66,12 +66,22 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         var otpReq = new StringContent(JsonSerializer.Serialize(otpReqBody), Encoding.UTF8, "application/json");
         var otpResp = await client.PostAsync($"api/v1/stores/{storeId}/samrock/otps", otpReq);
         var otpRespBody = await otpResp.Content.ReadAsStringAsync();
+        _helper.WriteLine($"OTP create response ({(int)otpResp.StatusCode}): {otpRespBody}");
         Assert.True(otpResp.IsSuccessStatusCode,
             $"OTP create expected 2xx, got {(int)otpResp.StatusCode}: {otpRespBody}");
 
         using var otpDoc = JsonDocument.Parse(otpRespBody);
-        var otp = otpDoc.RootElement.GetProperty("otp").GetString();
-        Assert.False(string.IsNullOrEmpty(otp));
+        // Property casing depends on the ASP.NET JSON serializer config. Try both.
+        string otp = null;
+        foreach (var name in new[] { "otp", "Otp", "OTP" })
+        {
+            if (otpDoc.RootElement.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                otp = v.GetString();
+                break;
+            }
+        }
+        Assert.False(string.IsNullOrEmpty(otp), $"OTP not found in response: {otpRespBody}");
 
         // Protocol POST (anonymous, OTP-gated)
         using var anon = new HttpClient { BaseAddress = ServerTester.PayTester.ServerUri };
@@ -85,6 +95,7 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         var content = new StringContent(json, Encoding.UTF8, "application/json");
         var response = await anon.PostAsync($"plugins/{storeId}/samrock/protocol?otp={otp}", content);
         var body = await response.Content.ReadAsStringAsync();
+        _helper.WriteLine($"Protocol POST response ({(int)response.StatusCode}): {body}");
 
         Assert.True(response.IsSuccessStatusCode,
             $"Protocol POST expected 2xx, got {(int)response.StatusCode}: {body}");
