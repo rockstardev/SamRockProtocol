@@ -75,7 +75,7 @@ jobs:
                 run: docker compose -f "submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml" up -d dev --build
 
             -   name: Run tests
-                run: dotnet test SamRockProtocol.Tests --verbosity normal --filter "Category=PlaywrightUITest" /p:EnableBoltzSupport=false
+                run: dotnet test SamRockProtocol.Tests --logger "console;verbosity=detailed" --filter "Category=PlaywrightUITest" /p:EnableBoltzSupport=false
 
             -   name: Cleanup Docker
                 run: docker compose -f submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml down --volumes

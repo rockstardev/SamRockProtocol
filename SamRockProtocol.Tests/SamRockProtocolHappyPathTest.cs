@@ -16,10 +16,12 @@ namespace BTCPayServer.Plugins.Tests;
 public class SamRockProtocolHappyPathTest : UnitTestBase
 {
     private readonly SharedPluginTestFixture _fixture;
+    private readonly ITestOutputHelper _helper;
 
     public SamRockProtocolHappyPathTest(SharedPluginTestFixture fixture, ITestOutputHelper helper) : base(helper)
     {
         _fixture = fixture;
+        _helper = helper;
         if (_fixture.ServerTester == null) _fixture.Initialize(this);
         ServerTester = _fixture.ServerTester;
     }
@@ -55,7 +57,17 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
             .Select(p => $"{p.Identifier}@{p.Version}")
             .ToList();
         var pluginsList = string.Join(", ", allPlugins);
-        Assert.Contains(allPlugins, p => p.StartsWith("SamRockProtocol"));
+        _helper.WriteLine($"Plugins in DI ({allPlugins.Count}): {pluginsList}");
+
+        var otpServiceResolved = ServerTester.PayTester.ServiceProvider.GetService(typeof(OtpService));
+        _helper.WriteLine($"OtpService resolved: {otpServiceResolved != null}");
+
+        var samrockPlugin = ServerTester.PayTester.ServiceProvider
+            .GetServices<BTCPayServer.Abstractions.Contracts.IBTCPayServerPlugin>()
+            .FirstOrDefault(p => p.Identifier == "SamRockProtocol");
+        _helper.WriteLine($"SamRockProtocol plugin in DI: {samrockPlugin != null}, type: {samrockPlugin?.GetType().FullName}, assembly: {samrockPlugin?.GetType().Assembly.Location}");
+
+        Assert.NotNull(samrockPlugin);
 
         var otpService = ServerTester.PayTester.GetService<OtpService>();
         Assert.NotNull(otpService);
