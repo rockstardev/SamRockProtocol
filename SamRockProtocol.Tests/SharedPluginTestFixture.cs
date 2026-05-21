@@ -13,6 +13,10 @@ public class ConfigurablePluginTestFixture : IDisposable
     {
         _testDirName = testDirName;
         _useNewDb = useNewDb;
+        // Force-load the SamRockProtocol assembly into the AppDomain so
+        // PluginManager.PreloadPluginsFromAssemblies discovers it via
+        // AppDomain.CurrentDomain.GetAssemblies() before BTCPay startup.
+        _ = typeof(SamRockProtocol.SamRockProtocolPlugin);
     }
 
     public ServerTester ServerTester { get; private set; }
