@@ -67,6 +67,8 @@ jobs:
                 run: docker compose -f "submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml" up -d dev --build
 
             -   name: Run tests
+                env:
+                    BTCPAY_DEBUG_PLUGINS: ${{ github.workspace }}/Plugins/SamRockProtocol/bin/Debug/net8.0/SamRockProtocol.dll
                 run: dotnet test SamRockProtocol.Tests --verbosity normal --filter "Category=PlaywrightUITest" /p:EnableBoltzSupport=false
 
             -   name: Cleanup Docker
