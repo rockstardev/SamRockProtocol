@@ -33,11 +33,22 @@ jobs:
 
             -   name: Configure plugin path for tests
                 run: |
-                    PLUGIN_DLL="${{ github.workspace }}/Plugins/SamRockProtocol/bin/Debug/net8.0/SamRockProtocol.dll"
+                    PLUGIN_DIR="${{ github.workspace }}/Plugins/SamRockProtocol/bin/Debug/net8.0"
+                    PLUGIN_DLL="$PLUGIN_DIR/SamRockProtocol.dll"
                     test -f "$PLUGIN_DLL" || { echo "Plugin DLL not built at $PLUGIN_DLL"; exit 1; }
+                    # DEBUG_PLUGINS path (file-based PluginLoader load)
                     printf '{"DEBUG_PLUGINS":"%s;"}\n' "$PLUGIN_DLL" \
                       > submodules/btcpayserver/BTCPayServer/appsettings.dev.json
                     cat submodules/btcpayserver/BTCPayServer/appsettings.dev.json
+                    # Mirror to the test bin dirs in case MSBuild incremental skips the copy
+                    cp submodules/btcpayserver/BTCPayServer/appsettings.dev.json \
+                       SamRockProtocol.Tests/bin/Debug/net8.0/appsettings.dev.json
+                    cp submodules/btcpayserver/BTCPayServer/appsettings.dev.json \
+                       submodules/btcpayserver/BTCPayServer.Tests/bin/Debug/net8.0/appsettings.dev.json 2>/dev/null || true
+                    # Plugins folder install (file-system based load, always-on path)
+                    mkdir -p "$HOME/.btcpayserver/Plugins/SamRockProtocol"
+                    cp -a "$PLUGIN_DIR/." "$HOME/.btcpayserver/Plugins/SamRockProtocol/"
+                    ls "$HOME/.btcpayserver/Plugins/SamRockProtocol/" | head -20
 
             -   name: Get Playwright version
                 id: playwright-version

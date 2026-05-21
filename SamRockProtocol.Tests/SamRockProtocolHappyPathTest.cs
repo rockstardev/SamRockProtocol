@@ -59,6 +59,11 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         var pluginsList = string.Join(", ", allPlugins);
         _helper.WriteLine($"Plugins in DI ({allPlugins.Count}): {pluginsList}");
 
+        var config = ServerTester.PayTester.ServiceProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>();
+        _helper.WriteLine($"DEBUG_PLUGINS config: '{config?["DEBUG_PLUGINS"]}'");
+        _helper.WriteLine($"AppContext.BaseDirectory: {AppContext.BaseDirectory}");
+        _helper.WriteLine($"appsettings.dev.json exists in BaseDirectory: {System.IO.File.Exists(System.IO.Path.Combine(AppContext.BaseDirectory, "appsettings.dev.json"))}");
+
         var otpServiceResolved = ServerTester.PayTester.ServiceProvider.GetService(typeof(OtpService));
         _helper.WriteLine($"OtpService resolved: {otpServiceResolved != null}");
 
