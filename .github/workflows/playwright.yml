@@ -1,0 +1,92 @@
+name: SamRockProtocol Plugin tests
+
+on:
+    push:
+        branches: [ "master" ]
+    pull_request:
+        branches: [ "master" ]
+
+jobs:
+    build:
+
+        runs-on: ubuntu-22.04
+        env:
+            CI: true
+            BTCPAY_SERVER_URL: http://localhost:14142
+
+        steps:
+            -   uses: actions/checkout@v4
+                with:
+                    submodules: recursive
+
+            -   name: Initialize and update submodules
+                run: git submodule update --init --recursive
+
+            -   name: Setup .NET
+                uses: actions/setup-dotnet@v4
+                with:
+                    dotnet-version: 8.0.x
+
+            -   name: Build solution
+                run: |
+                    dotnet build -maxcpucount:1 /p:EnableBoltzSupport=false
+
+            -   name: Configure plugin path for tests
+                run: |
+                    PLUGIN_DIR="${{ github.workspace }}/Plugins/SamRockProtocol/bin/Debug/net8.0"
+                    PLUGIN_DLL="$PLUGIN_DIR/SamRockProtocol.dll"
+                    test -f "$PLUGIN_DLL" || { echo "Plugin DLL not built at $PLUGIN_DLL"; exit 1; }
+                    # DEBUG_PLUGINS path (file-based PluginLoader load)
+                    printf '{"DEBUG_PLUGINS":"%s;"}\n' "$PLUGIN_DLL" \
+                      > submodules/btcpayserver/BTCPayServer/appsettings.dev.json
+                    cat submodules/btcpayserver/BTCPayServer/appsettings.dev.json
+                    # Mirror to the test bin dirs in case MSBuild incremental skips the copy
+                    cp submodules/btcpayserver/BTCPayServer/appsettings.dev.json \
+                       SamRockProtocol.Tests/bin/Debug/net8.0/appsettings.dev.json
+                    cp submodules/btcpayserver/BTCPayServer/appsettings.dev.json \
+                       submodules/btcpayserver/BTCPayServer.Tests/bin/Debug/net8.0/appsettings.dev.json 2>/dev/null || true
+                    # Plugins folder install (file-system based load, always-on path)
+                    mkdir -p "$HOME/.btcpayserver/Plugins/SamRockProtocol"
+                    cp -a "$PLUGIN_DIR/." "$HOME/.btcpayserver/Plugins/SamRockProtocol/"
+                    ls "$HOME/.btcpayserver/Plugins/SamRockProtocol/" | head -20
+
+            -   name: Get Playwright version
+                id: playwright-version
+                run: |
+                    PLAYWRIGHT_VERSION=$(grep -oP 'Microsoft\.Playwright\.NUnit" Version="\K[^"]+' SamRockProtocol.Tests/SamRockProtocol.Tests.csproj)
+                    echo "version=$PLAYWRIGHT_VERSION" >> $GITHUB_OUTPUT
+                    echo "Detected Playwright version: $PLAYWRIGHT_VERSION"
+
+            -   name: Cache Playwright browsers
+                uses: actions/cache@v4
+                id: playwright-cache
+                with:
+                    path: ~/.cache/ms-playwright
+                    key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('**/SamRockProtocol.Tests.csproj') }}
+                    restore-keys: |
+                        ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}-
+
+            -   name: Install Playwright CLI + browsers (full install)
+                if: steps.playwright-cache.outputs.cache-hit != 'true'
+                run: |
+                    dotnet tool install --global Microsoft.Playwright.CLI
+                    export PATH="$PATH:$HOME/.dotnet/tools"
+                    playwright install --with-deps
+
+            -   name: Install Playwright CLI only (cache hit)
+                if: steps.playwright-cache.outputs.cache-hit == 'true'
+                run: |
+                    dotnet tool install --global Microsoft.Playwright.CLI
+                    export PATH="$PATH:$HOME/.dotnet/tools"
+
+            -   name: Start Docker containers
+                env:
+                    DOCKER_BUILDKIT: 1
+                    COMPOSE_DOCKER_CLI_BUILD: 1
+                run: docker compose -f "submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml" up -d dev --build
+
+            -   name: Run tests
+                run: dotnet test SamRockProtocol.Tests --logger "console;verbosity=detailed" --filter "Category=PlaywrightUITest" /p:EnableBoltzSupport=false
+
+            -   name: Cleanup Docker
+                run: docker compose -f submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml down --volumes
