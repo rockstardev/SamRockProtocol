@@ -90,7 +90,9 @@ public class DescriptorParserTests
     {
         // Anchored regex (PR #11) rejects descriptors with content after the
         // optional checksum. Pre-PR-#11 would have silently accepted.
-        var withGarbage = AquaBtc + "EXTRA_GARBAGE";
+        // Use a non-alphanumeric extension so it can't be absorbed into the
+        // checksum character class.
+        var withGarbage = AquaBtc + "!!extra";
         Assert.False(DescriptorParser.TryParseBitcoinDescriptor(withGarbage,
             out _, out _, out _, out _, out var error));
         Assert.Contains("Invalid BTC descriptor", error);
@@ -181,7 +183,7 @@ public class DescriptorParserTests
     [Fact]
     public void TryParseLiquidDescriptor_TrailingGarbage_Rejected()
     {
-        var withGarbage = AquaLbtcWrapped + "EXTRA";
+        var withGarbage = AquaLbtcWrapped + "!!extra";
         Assert.False(DescriptorParser.TryParseLiquidDescriptor(withGarbage,
             out _, out _, out _, out _, out _, out _));
     }
