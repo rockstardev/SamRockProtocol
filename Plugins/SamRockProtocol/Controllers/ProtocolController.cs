@@ -152,7 +152,7 @@ public class ProtocolController(
                 var descriptor = setupModel.BTC.Descriptor;
 
                 // Extract script type, fingerprint, derivation path, xpub, and address derivation suffix
-                var match = Regex.Match(descriptor, @"^(\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)(?:#[a-zA-Z0-9]+)?");
+                var match = Regex.Match(descriptor, @"^(\w+)\(\[([a-fA-F0-9]{8})/([^\]]+)\](xpub[^/\)]+)(/[^\)]+)?\)(?:#[a-zA-Z0-9]+)?$");
                 if (!match.Success)
                 {
                     result.Results[key] = new SamRockProtocolResponse(false,
@@ -252,7 +252,15 @@ public class ProtocolController(
         {
             if (string.Equals(setupModel.BTCLN.Type, "Boltz", StringComparison.OrdinalIgnoreCase))
             {
-                await boltzWrapper.SetBoltz(StoreId, setupModel.BTCLN.LBTC.Descriptor, result);
+                if (string.IsNullOrWhiteSpace(setupModel.BTCLN.LBTC?.Descriptor))
+                {
+                    result.Results[SamRockProtocolKeys.BTC_LN] = new SamRockProtocolResponse(false,
+                        "Boltz setup requires a Liquid descriptor.", null);
+                }
+                else
+                {
+                    await boltzWrapper.SetBoltz(StoreId, setupModel.BTCLN.LBTC.Descriptor, result);
+                }
             }
             else
             {
@@ -264,12 +272,11 @@ public class ProtocolController(
         // TODO: If both LBTC is set and BtcLn is set, need to generate as many addresses for LiquidChain
         // as we have in setupModel.BtcLn.LiquidAddresses.Length to reserve them
 
-        var allSuccess = result.Results.Values.All(a => a.Success);
+        var allSuccess = result.Results.Count > 0 && result.Results.Values.All(a => a.Success);
         string errorMessage = null;
-        if (!allSuccess && result.Results[SamRockProtocolKeys.BTC_LN] != null)
+        if (!allSuccess && result.Results.TryGetValue(SamRockProtocolKeys.BTC_LN, out var lnResult))
         {
-            var res = result.Results[SamRockProtocolKeys.BTC_LN];
-            errorMessage = res.Message;
+            errorMessage = lnResult.Message;
         }
 
         samrockProtocolService.OtpUsed(otp, allSuccess, errorMessage);
@@ -278,8 +285,8 @@ public class ProtocolController(
 
         return Ok(new
         {
-            Success = true,
-            Message = "Wallet setup successfully.",
+            Success = allSuccess,
+            Message = allSuccess ? "Wallet setup successfully." : "Wallet setup failed.",
             Result = result
         });
     }
