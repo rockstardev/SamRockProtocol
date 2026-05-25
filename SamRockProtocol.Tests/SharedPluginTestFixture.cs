@@ -37,6 +37,15 @@ public class ConfigurablePluginTestFixture : IDisposable
 
             var testDir = Path.Combine(Directory.GetCurrentDirectory(), _testDirName);
             ServerTester = testInstance.CreateServerTester(testDir, _useNewDb);
+            // BTCPay defaults plugins to isolated AssemblyLoadContext so production
+            // plugins can be unloaded/swapped without restarting. In tests the
+            // isolated context makes the plugin's assembly invisible to the test
+            // process's MVC ApplicationParts discovery, so the controllers never
+            // route (the plugin shows in DI but POSTs to its endpoints 404).
+            // Load into the default context so MVC can discover the controllers.
+            // Mirrors rockstardev/btcPayServerPlugins.RockstarDev's test fixture
+            // and closes the master CI #22 OTP-404 failure deterministically.
+            ServerTester.PayTester.LoadPluginsInDefaultAssemblyContext = false;
             ServerTester.StartAsync().GetAwaiter().GetResult();
         }
     }
