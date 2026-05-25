@@ -13,10 +13,15 @@ public class ConfigurablePluginTestFixture : IDisposable
     {
         _testDirName = testDirName;
         _useNewDb = useNewDb;
-        // Force-load the SamRockProtocol assembly into the AppDomain so
-        // PluginManager.PreloadPluginsFromAssemblies discovers it via
-        // AppDomain.CurrentDomain.GetAssemblies() before BTCPay startup.
-        _ = typeof(SamRockProtocol.SamRockProtocolPlugin);
+        // Do NOT force-load the SamRockProtocol assembly into the AppDomain
+        // here. PluginManager.AddPlugins scans AppDomain assemblies first and
+        // registers any plugin it finds with Loader=null. Plugins loaded via
+        // that path skip mvcBuilder.AddPluginLoader at PluginManager.cs:255,
+        // which means MVC ApplicationParts never includes the plugin's
+        // assembly -> the IBTCPayServerPlugin shows in DI but its controller
+        // routes 404. Let the DEBUG_PLUGINS / plugins-folder path resolve the
+        // plugin via PluginLoader.CreateFromAssemblyFile so the Loader is
+        // non-null and MVC integration happens.
     }
 
     public ServerTester ServerTester { get; private set; }
@@ -37,15 +42,6 @@ public class ConfigurablePluginTestFixture : IDisposable
 
             var testDir = Path.Combine(Directory.GetCurrentDirectory(), _testDirName);
             ServerTester = testInstance.CreateServerTester(testDir, _useNewDb);
-            // BTCPay defaults plugins to isolated AssemblyLoadContext so production
-            // plugins can be unloaded/swapped without restarting. In tests the
-            // isolated context makes the plugin's assembly invisible to the test
-            // process's MVC ApplicationParts discovery, so the controllers never
-            // route (the plugin shows in DI but POSTs to its endpoints 404).
-            // Load into the default context so MVC can discover the controllers.
-            // Mirrors rockstardev/btcPayServerPlugins.RockstarDev's test fixture
-            // and closes the master CI #22 OTP-404 failure deterministically.
-            ServerTester.PayTester.LoadPluginsInDefaultAssemblyContext = false;
             ServerTester.StartAsync().GetAwaiter().GetResult();
         }
     }
