@@ -24,6 +24,17 @@ namespace BTCPayServer.Plugins.Tests;
 [Collection("Plugin Tests")]
 public class DescriptorParserTests
 {
+    // The fixture is injected so xunit eagerly creates it BEFORE these tests
+    // run. The collection attribute alone is not sufficient - xunit only
+    // builds an ICollectionFixture<T> when the first test class that injects
+    // T runs. Without this parameter, DescriptorParserTests would run before
+    // the fixture initializes ServerTester, and the JIT of these test bodies
+    // would load SamRockProtocol into AppDomain before PluginManager scans
+    // (see class XML doc above). Injecting forces the fixture (and therefore
+    // the ServerTester boot path that calls PluginLoader with Loader != null)
+    // to complete first. We don't otherwise use the fixture.
+    public DescriptorParserTests(SharedPluginTestFixture _) { }
+
     // Reference descriptors copied verbatim from real wallet emissions in
     // production logs. Same e17c2d80 fingerprint thread used across
     // happy-path and parser tests for cross-test traceability.
