@@ -13,10 +13,15 @@ public class ConfigurablePluginTestFixture : IDisposable
     {
         _testDirName = testDirName;
         _useNewDb = useNewDb;
-        // Force-load the SamRockProtocol assembly into the AppDomain so
-        // PluginManager.PreloadPluginsFromAssemblies discovers it via
-        // AppDomain.CurrentDomain.GetAssemblies() before BTCPay startup.
-        _ = typeof(SamRockProtocol.SamRockProtocolPlugin);
+        // Do NOT force-load the SamRockProtocol assembly into the AppDomain
+        // here. PluginManager.AddPlugins scans AppDomain assemblies first and
+        // registers any plugin it finds with Loader=null. Plugins loaded via
+        // that path skip mvcBuilder.AddPluginLoader at PluginManager.cs:255,
+        // which means MVC ApplicationParts never includes the plugin's
+        // assembly -> the IBTCPayServerPlugin shows in DI but its controller
+        // routes 404. Let the DEBUG_PLUGINS / plugins-folder path resolve the
+        // plugin via PluginLoader.CreateFromAssemblyFile so the Loader is
+        // non-null and MVC integration happens.
     }
 
     public ServerTester ServerTester { get; private set; }

@@ -62,13 +62,31 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
             $"{user.RegisterDetails.Email}:{user.RegisterDetails.Password}"));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", basic);
 
+        // Retry the OTP create call up to ~10s on 404. Background: the plugin's
+        // controllers can race ServerTester boot - the plugin assembly is loaded
+        // and the IBTCPayServerPlugin shows in DI (logged above), but MVC
+        // ApplicationParts may not have registered the plugin's controllers by
+        // the time this request fires. The race rate is low but non-zero on CI;
+        // master run #22 vs. PR-branch run #21 had identical tree SHAs and one
+        // 404'd while the other passed. Retry until the route is reachable or
+        // the warm-up budget elapses.
         var otpReqBody = new { btc = true, btcln = false, lbtc = true };
-        var otpReq = new StringContent(JsonSerializer.Serialize(otpReqBody), Encoding.UTF8, "application/json");
-        var otpResp = await client.PostAsync($"api/v1/stores/{storeId}/samrock/otps", otpReq);
-        var otpRespBody = await otpResp.Content.ReadAsStringAsync();
-        _helper.WriteLine($"OTP create response ({(int)otpResp.StatusCode}): {otpRespBody}");
+        HttpResponseMessage otpResp = null;
+        string otpRespBody = null;
+        const int otpMaxAttempts = 20;
+        const int otpDelayMs = 500;
+        for (var attempt = 1; attempt <= otpMaxAttempts; attempt++)
+        {
+            var otpReq = new StringContent(JsonSerializer.Serialize(otpReqBody), Encoding.UTF8, "application/json");
+            otpResp = await client.PostAsync($"api/v1/stores/{storeId}/samrock/otps", otpReq);
+            otpRespBody = await otpResp.Content.ReadAsStringAsync();
+            _helper.WriteLine($"OTP create attempt {attempt}/{otpMaxAttempts} ({(int)otpResp.StatusCode}): {otpRespBody}");
+            if (otpResp.StatusCode != System.Net.HttpStatusCode.NotFound)
+                break;
+            await Task.Delay(otpDelayMs);
+        }
         Assert.True(otpResp.IsSuccessStatusCode,
-            $"OTP create expected 2xx, got {(int)otpResp.StatusCode}: {otpRespBody}");
+            $"OTP create expected 2xx after {otpMaxAttempts} attempts, got {(int)otpResp.StatusCode}: {otpRespBody}");
 
         using var otpDoc = JsonDocument.Parse(otpRespBody);
         // Property casing depends on the ASP.NET JSON serializer config. Try both.
