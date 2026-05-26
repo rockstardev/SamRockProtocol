@@ -8,7 +8,20 @@ namespace BTCPayServer.Plugins.Tests;
 /// no BTCPay test stack - parses string inputs and inspects outputs directly.
 /// Covers the AQUA happy path, the BULL wallet additions from PR #10, and
 /// the input-hardening edge cases from PR #11.
+///
+/// [Collection("Plugin Tests")] forces the SharedPluginTestFixture to
+/// initialize ServerTester before ANY test in this class JIT-compiles. The
+/// JIT of a DescriptorParserTests method loads the SamRockProtocol assembly
+/// into the AppDomain; if that happens before BTCPay's PluginManager runs
+/// (PluginManager.cs:155), PreloadPluginsFromAssemblies sees the plugin in
+/// AppDomain and registers it with Loader=null, which dedup-locks out the
+/// PluginLoader path that would register controllers with MVC -
+/// SamRockProtocolHappyPathTest then 404s on every plugin route. Joining
+/// the collection makes ServerTester boot during the shared fixture init
+/// (before any test method JITs), which lets the PluginLoader path resolve
+/// the plugin with Loader non-null and register controllers.
 /// </summary>
+[Collection("Plugin Tests")]
 public class DescriptorParserTests
 {
     // Reference descriptors copied verbatim from real wallet emissions in
