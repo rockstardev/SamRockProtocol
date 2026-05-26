@@ -79,13 +79,20 @@ jobs:
                     dotnet tool install --global Microsoft.Playwright.CLI
                     export PATH="$PATH:$HOME/.dotnet/tools"
 
+            -   name: Run unit tests
+                # Pure-unit-tests project. Runs BEFORE Docker boot because it
+                # doesn't need the BTCPay test stack - completes in ~1s. Keeps
+                # the unit-test feedback loop fast even when the integration
+                # test below takes minutes.
+                run: dotnet test SamRockProtocol.UnitTests --logger "console;verbosity=normal" /p:EnableBoltzSupport=false
+
             -   name: Start Docker containers
                 env:
                     DOCKER_BUILDKIT: 1
                     COMPOSE_DOCKER_CLI_BUILD: 1
                 run: docker compose -f "submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml" up -d dev --build
 
-            -   name: Run tests
+            -   name: Run integration tests
                 run: dotnet test SamRockProtocol.Tests --logger "console;verbosity=detailed" /p:EnableBoltzSupport=false
 
             -   name: Cleanup Docker

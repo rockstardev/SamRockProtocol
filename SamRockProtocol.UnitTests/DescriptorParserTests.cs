@@ -1,7 +1,7 @@
 using SamRockProtocol.Services;
 using Xunit;
 
-namespace BTCPayServer.Plugins.Tests;
+namespace SamRockProtocol.UnitTests;
 
 /// <summary>
 /// Pure unit tests for SamRockProtocol's descriptor parsing helpers. No DI,

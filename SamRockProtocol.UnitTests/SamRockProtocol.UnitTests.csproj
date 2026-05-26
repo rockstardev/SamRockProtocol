@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+
+        <IsPackable>false</IsPackable>
+        <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+        <RootNamespace>SamRockProtocol.UnitTests</RootNamespace>
+    </PropertyGroup>
+
+    <ItemDefinitionGroup>
+        <ProjectReference>
+            <Properties>StaticWebAssetsEnabled=false</Properties>
+        </ProjectReference>
+    </ItemDefinitionGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+        <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.0.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+    <!--
+        Deliberately references ONLY the SamRockProtocol plugin project, NOT
+        the BTCPayServer test fixtures. The integration-test project
+        (SamRockProtocol.Tests) must stay disentangled from any compile-time
+        reference to plugin-internal types, because BTCPay's PluginManager
+        scans AppDomain.CurrentDomain.GetAssemblies() before its file-based
+        PluginLoader path and dedup-locks out anything already in AppDomain
+        (PluginManager.cs:155-256). A plugin loaded that way registers with
+        Loader=null and skips mvcBuilder.AddPluginLoader, so its controller
+        routes 404 on the integration test. Keeping the pure unit tests in
+        their own assembly lets us cover DescriptorParser without poisoning
+        the integration test.
+    -->
+    <ItemGroup>
+        <ProjectReference Include="..\Plugins\SamRockProtocol\SamRockProtocol.csproj" />
+    </ItemGroup>
+
+</Project>

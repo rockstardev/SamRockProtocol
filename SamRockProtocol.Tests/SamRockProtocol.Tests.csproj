@@ -32,7 +32,6 @@
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Tests\BTCPayServer.Tests.csproj">
             <PrivateAssets>all</PrivateAssets>
         </ProjectReference>
-        <ProjectReference Include="..\Plugins\SamRockProtocol\SamRockProtocol.csproj" />
     </ItemGroup>
 
 </Project>
