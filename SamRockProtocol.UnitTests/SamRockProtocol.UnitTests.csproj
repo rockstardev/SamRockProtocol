@@ -8,6 +8,10 @@
         <IsPackable>false</IsPackable>
         <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
         <RootNamespace>SamRockProtocol.UnitTests</RootNamespace>
+
+        <!-- Mirror the plugin's default so the flavor-dependent package
+             versions below line up with the plugin build. -->
+        <EnableBoltzSupport Condition="'$(EnableBoltzSupport)' == ''">true</EnableBoltzSupport>
     </PropertyGroup>
 
     <ItemDefinitionGroup>
@@ -23,6 +27,19 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
         </PackageReference>
+        <!--
+            Referenced explicitly because the plugin project excludes runtime
+            assets of its BTCPayServer project reference, so this package's DLL
+            is otherwise not copied to the test output directory. Controller
+            tests instantiate SamRockProtocolHostedService, whose constructor
+            signature references RateLimitService from this package.
+        -->
+        <PackageReference Include="NicolasDorier.RateLimits" Version="1.2.3" />
+        <!-- NBXplorer.Client version must match the BTCPayServer.Common in the
+             active flavor: the main submodule pins 4.3.9, the Boltz
+             submodule's nested BTCPayServer pins 5.0.5. -->
+        <PackageReference Include="NBXplorer.Client" Version="4.3.9" Condition="'$(EnableBoltzSupport)' != 'true'" />
+        <PackageReference Include="NBXplorer.Client" Version="5.0.5" Condition="'$(EnableBoltzSupport)' == 'true'" />
     </ItemGroup>
 
     <!--

@@ -81,6 +81,14 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
             otpResp = await client.PostAsync($"api/v1/stores/{storeId}/samrock/otps", otpReq);
             otpRespBody = await otpResp.Content.ReadAsStringAsync();
             _helper.WriteLine($"OTP create attempt {attempt}/{otpMaxAttempts} ({(int)otpResp.StatusCode}): {otpRespBody}");
+            // 429: the OTP endpoints share a rate-limit zone (12r/min, burst=3,
+            // per remote address) with the cross-tenant test; wait for the
+            // token bucket to refill.
+            if (otpResp.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                await Task.Delay(6000);
+                continue;
+            }
             if (otpResp.StatusCode != System.Net.HttpStatusCode.NotFound)
                 break;
             await Task.Delay(otpDelayMs);
@@ -101,7 +109,9 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
         }
         Assert.False(string.IsNullOrEmpty(otp), $"OTP not found in response: {otpRespBody}");
 
-        // Protocol POST (anonymous, OTP-gated)
+        // Protocol POST (anonymous, OTP-gated). Retries on 429: the endpoint
+        // shares the SamRockProtocol rate-limit zone (12r/min, burst=3, per
+        // remote address) with the cross-tenant test.
         using var anon = new HttpClient { BaseAddress = ServerTester.PayTester.ServerUri };
         var payload = new
         {
@@ -110,10 +120,18 @@ public class SamRockProtocolHappyPathTest : UnitTestBase
             LBTC = new { Descriptor = LbtcDescriptor }
         };
         var json = JsonSerializer.Serialize(payload);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
-        var response = await anon.PostAsync($"plugins/{storeId}/samrock/protocol?otp={otp}", content);
-        var body = await response.Content.ReadAsStringAsync();
-        _helper.WriteLine($"Protocol POST response ({(int)response.StatusCode}): {body}");
+        HttpResponseMessage response = null;
+        string body = null;
+        for (var attempt = 1; ; attempt++)
+        {
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            response = await anon.PostAsync($"plugins/{storeId}/samrock/protocol?otp={otp}", content);
+            body = await response.Content.ReadAsStringAsync();
+            _helper.WriteLine($"Protocol POST attempt {attempt} ({(int)response.StatusCode}): {body}");
+            if (response.StatusCode != System.Net.HttpStatusCode.TooManyRequests || attempt >= 10)
+                break;
+            await Task.Delay(6000);
+        }
 
         Assert.True(response.IsSuccessStatusCode,
             $"Protocol POST expected 2xx, got {(int)response.StatusCode}: {body}");

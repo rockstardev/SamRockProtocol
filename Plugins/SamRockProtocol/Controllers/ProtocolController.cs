@@ -37,9 +37,6 @@ public class ProtocolController(
     BoltzWrapper boltzWrapper)
     : Controller
 {
-    [FromRoute]
-    public string StoreId { get; set; }
-
     [AllowAnonymous]
     [IgnoreAntiforgeryToken] // dart/dio update now causes Form[""] to break, so this is needed
     [RateLimitsFilter("SamRockProtocol", Scope = RateLimitsScope.RemoteAddress)]
@@ -48,6 +45,11 @@ public class ProtocolController(
     {
         var otp = Request.Query["otp"].ToString();
         if (string.IsNullOrEmpty(otp) || !samrockProtocolService.TryGet(otp, out var importWalletModel))
+            return NotFound(new SamRockProtocolResponse(false, "OTP not found or expired.", null));
+
+        // An OTP may only be redeemed on the route of the store it was created for.
+        var routeStoreId = RouteData.Values["storeId"] as string;
+        if (!string.Equals(routeStoreId, importWalletModel.StoreId, StringComparison.Ordinal))
             return NotFound(new SamRockProtocolResponse(false, "OTP not found or expired.", null));
 
         var storeData = await storeRepository.FindStore(importWalletModel.StoreId);
@@ -216,7 +218,7 @@ public class ProtocolController(
                 }
                 else
                 {
-                    await boltzWrapper.SetBoltz(StoreId, DescriptorParser.NormalizeDescriptor(setupModel.BTCLN.LBTC.Descriptor), result);
+                    await boltzWrapper.SetBoltz(storeData.Id, DescriptorParser.NormalizeDescriptor(setupModel.BTCLN.LBTC.Descriptor), result);
                 }
             }
             else

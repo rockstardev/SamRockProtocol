@@ -66,6 +66,13 @@ public class SamRockProtocolHostedService(
     {
         if (_samrockImportDictionary.TryGetValue(otp, out var value))
         {
+            if (value.Expires <= DateTimeOffset.UtcNow)
+            {
+                _samrockImportDictionary.Remove(otp);
+                model = null;
+                return false;
+            }
+
             model = value;
             return true;
         }
