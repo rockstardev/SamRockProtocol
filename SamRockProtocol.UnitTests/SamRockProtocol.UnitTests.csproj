@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
@@ -35,11 +35,10 @@
             signature references RateLimitService from this package.
         -->
         <PackageReference Include="NicolasDorier.RateLimits" Version="1.2.3" />
-        <!-- NBXplorer.Client version must match the BTCPayServer.Common in the
-             active flavor: the main submodule pins 4.3.9, the Boltz
-             submodule's nested BTCPayServer pins 5.0.5. -->
-        <PackageReference Include="NBXplorer.Client" Version="4.3.9" Condition="'$(EnableBoltzSupport)' != 'true'" />
-        <PackageReference Include="NBXplorer.Client" Version="5.0.5" Condition="'$(EnableBoltzSupport)' == 'true'" />
+        <!-- NBXplorer.Client version must match the BTCPayServer.Common pinned
+             by the btcpayserver submodule (the Indra submodule pins the same
+             BTCPayServer commit). -->
+        <PackageReference Include="NBXplorer.Client" Version="5.0.6" />
     </ItemGroup>
 
     <!--
