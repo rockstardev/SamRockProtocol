@@ -48,6 +48,6 @@
 
     <!-- Conditional Boltz reference -->
     <ItemGroup Condition="'$(EnableBoltzSupport)' == 'true'">
-        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj"/>
+        <ProjectReference Include="..\..\submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Indra.csproj"/>
     </ItemGroup>
 </Project>
