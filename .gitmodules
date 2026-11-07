@@ -3,4 +3,5 @@
 	url = https://github.com/btcpayserver/btcpayserver
 [submodule "submodules/boltz"]
 	path = submodules/boltz
-	url = https://github.com/BoltzExchange/boltz-btcpay-plugin
+	url = https://github.com/AquaWallet/btcpay-plugin-indra
+	branch = main

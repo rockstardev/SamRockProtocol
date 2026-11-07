@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 #if BOLTZ_SUPPORT
-using BTCPayServer.Plugins.Boltz;
+using BTCPayServer.Plugins.Indra;
 using Grpc.Core;
 #endif
 using Microsoft.Extensions.Logging;
@@ -16,7 +16,7 @@ namespace SamRockProtocol.Services;
 /// </summary>
 public class BoltzWrapper(
 #if BOLTZ_SUPPORT
-    BoltzService boltzService,
+    IndraService boltzService,
 #endif
     ILogger<BoltzWrapper> logger
     )

@@ -26,7 +26,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamRockProtocol", "Plugins\
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Boltz", "Boltz", "{3438AFF0-03D3-4475-BC6D-425FE9E3BF03}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer.Plugins.Boltz", "submodules\boltz\BTCPayServer.Plugins.Boltz\BTCPayServer.Plugins.Boltz.csproj", "{80226931-4660-46F5-8CCE-7072BA768805}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer.Plugins.Indra", "submodules\boltz\BTCPayServer.Plugins.Indra\BTCPayServer.Plugins.Indra.csproj", "{80226931-4660-46F5-8CCE-7072BA768805}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "AResources", "AResources", "{649F2585-E6A4-48B4-8315-58983443A554}"
 	ProjectSection(SolutionItems) = preProject

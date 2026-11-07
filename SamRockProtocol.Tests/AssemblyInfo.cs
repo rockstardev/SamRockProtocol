@@ -5,5 +5,6 @@ using Xunit;
 // SharedPluginTestFixture which binds to a fixed port. Running unit-test
 // classes in parallel with that boot can confuse fixture-init ordering and
 // MVC ApplicationParts discovery on the running server. Disable parallelism
-// so the integration test runs in isolation after the (fast) unit tests.
-[assembly: CollectionBehavior(DisableTestParallelization = true)]
+// (one collection for the whole assembly) so the integration test runs in
+// isolation after the (fast) unit tests.
+[assembly: CollectionBehavior(CollectionBehavior.CollectionPerAssembly)]
