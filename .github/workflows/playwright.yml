@@ -53,7 +53,7 @@ jobs:
             -   name: Get Playwright version
                 id: playwright-version
                 run: |
-                    PLAYWRIGHT_VERSION=$(grep -oP 'Microsoft\.Playwright\.NUnit" Version="\K[^"]+' SamRockProtocol.Tests/SamRockProtocol.Tests.csproj)
+                    PLAYWRIGHT_VERSION=$(grep -oP 'Microsoft\.Playwright" Version="\K[^"]+' SamRockProtocol.Tests/SamRockProtocol.Tests.csproj)
                     echo "version=$PLAYWRIGHT_VERSION" >> $GITHUB_OUTPUT
                     echo "Detected Playwright version: $PLAYWRIGHT_VERSION"
 
@@ -84,7 +84,7 @@ jobs:
                 # doesn't need the BTCPay test stack - completes in ~1s. Keeps
                 # the unit-test feedback loop fast even when the integration
                 # test below takes minutes.
-                run: dotnet test SamRockProtocol.UnitTests --logger "console;verbosity=normal" /p:EnableBoltzSupport=false
+                run: dotnet test --project SamRockProtocol.UnitTests /p:EnableBoltzSupport=false -- --output Detailed
 
             -   name: Start Docker containers
                 env:
@@ -93,7 +93,7 @@ jobs:
                 run: docker compose -f "submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml" up -d dev --build
 
             -   name: Run integration tests
-                run: dotnet test SamRockProtocol.Tests --logger "console;verbosity=detailed" /p:EnableBoltzSupport=false
+                run: dotnet test --project SamRockProtocol.Tests /p:EnableBoltzSupport=false -- --output Detailed
 
             -   name: Cleanup Docker
                 run: docker compose -f submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml down --volumes

@@ -16,7 +16,7 @@ public class SamRockProtocolPlugin : BaseBTCPayServerPlugin
     [
         new() { Identifier = nameof(BTCPayServer), Condition = ">=2.3.7" },
 #if BOLTZ_SUPPORT
-        new() { Identifier = "BTCPayServer.Plugins.Indra", Condition = ">=2.1.12" }
+        new() { Identifier = "BTCPayServer.Plugins.Indra", Condition = ">=2.5.0" }
 #endif
     ];
 
